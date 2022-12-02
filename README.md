@@ -1,1 +1,2 @@
-# project-00-7t-pipeline-dev
+# Laminar pRF properties
+Analysis pipeline (anatomical image preprocessing, functional preprocessing, surface projection, pRF mapping)
