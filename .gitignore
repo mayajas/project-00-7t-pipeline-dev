@@ -1,0 +1,7 @@
+*.egg-info
+data
+_ignore
+reports/notes/MP2RAGE skull-stripping \302\267 Issue #18 \302\267 nipreps_smriprep \302\267 GitHub.pdf
+reports/notes/gilles-de-hollander-20181214 mp2rage segmentation.pdf
+reports/notes/open-questions.txt
+reports/notes/slurm_job_settings.txt
