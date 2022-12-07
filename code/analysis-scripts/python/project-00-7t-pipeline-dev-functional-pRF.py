@@ -2,14 +2,14 @@
 # coding: utf-8
 
 # # Layer-specific fMRI processing pipeline: functional processing & pRF mapping
-# 
+#
 # It is assumed that this workflow is run following the laminar-fMRI-pipeline-advanced-skullstrip workflow.
-# 
-# The functional processing pipeline aims to follow the steps followed in fMRIPrep, adapted for partial FoV fMRI data. Reasons for not using fMRIPrep directly:  
+#
+# The functional processing pipeline aims to follow the steps followed in fMRIPrep, adapted for partial FoV fMRI data. Reasons for not using fMRIPrep directly:
 # - from fMRIPrep website: a reason not to use fMRIPrep is very narrow FoV images, which often do not contain enough information for standard image registration methods to work correctly
 # - fMRIPrep is designed to take a T1 MPRAGE image as input, not MP2RAGE
 # - pRF mapping can be carried out in native space - here we avoid additional data perturbations by keeping the data in native space
-# 
+#
 # The pipeline uses the anatomical surface reconstruction from the laminar-fMRI-pipeline-advanced-skullstrip workflow as input. The steps implemented in the pipeline are as follows:
 # - discard initial fMRI volumes to allow for T1 equilibration
 # - realignment: head-motion estimation and correction (FSL MCFLIRT); within and between sessions
@@ -21,42 +21,42 @@
 # - surface sampling (FreeSurfer mri_vol2surf)
 # - confounds (FSL fsl_motion_outliers then fsl_regfilt?)
 # - detection of non-steady states ???
-# 
+#
 # pRF: decide on software
 # - what format of input data?
 # - what format of aperture parameters?
 # - anatomical priors (neuropythy)
 # - combine empirical estimate and anatomical priors for Bayesian
 # - decide which sessions to use (pol, ecc, bar)
-# 
-# 
+#
+#
 # try using raw image (not skull-stripped) for coreg
 
 # ### Set preferences
 # Whether or not to write the workflow viz graph, run pipeline, run specific branches of workflow...
 
-# 
+#
 
 # In[1]:
 
 
 # whether or not to run the pipeline
-run_pipeline = True   
+run_pipeline = True
 
 # whether or not to write workflow graph (svg)
-write_graph  = True                           
-                        
+write_graph  = True
+
 # whether manual edits exist (for coregistration)
-manual_edits = True      
+manual_edits = True
 
 # whether to do unwarping
-unwarp = False         
+unwarp = False
 
 # whether to do coregistration
 coregister = True
 
 # coregistration method: 'flirt','freesurfer', 'antsRegistration' or 'itk-snap'
-coreg_method = 'antsRegistration' 
+coreg_method = 'antsRegistration'
 
 # coregistration direction: either from functional to structural ('func2struct') or vice versa ('struct2func')
 coreg_dir = 'func2struct'
@@ -67,16 +67,16 @@ which_mask = 'midocc'
 # number of cores to use: either set explicitly or based on settings in batch file
 import os
 #n_procs = 1
-n_procs = int(os.getenv('OMP_NUM_THREADS'))   
+n_procs = int(os.getenv('OMP_NUM_THREADS'))
 print(n_procs)
 
 # field map method (https://lcni.uoregon.edu/kb-articles/kb-0003)
-# Method 1 calculates a field map based on the difference in phase 
-# between two different echos in a double echo sequence. 
-# Method 2 uses two separate acquisitions with opposite phase encoding 
-# directions to calculate a field map based on the difference in 
+# Method 1 calculates a field map based on the difference in phase
+# between two different echos in a double echo sequence.
+# Method 2 uses two separate acquisitions with opposite phase encoding
+# directions to calculate a field map based on the difference in
 # distortion between the two acquisitions.
-fmap_method = 1 
+fmap_method = 1
 
 
 # ### Set paths
@@ -146,8 +146,8 @@ from nipype.interfaces.base import (
     CommandLineInputSpec,
     CommandLine,
     TraitedSpec,
-    BaseInterface, 
-    BaseInterfaceInputSpec, 
+    BaseInterface,
+    BaseInterfaceInputSpec,
     File,
     Directory
 )
@@ -164,7 +164,7 @@ from os.path import abspath
 
 from nipype.interfaces.freesurfer.model import Binarize
 
-import pygraphviz 
+import pygraphviz
 
 from pydicom.data import get_testdata_file
 from pydicom import dcmread
@@ -238,7 +238,7 @@ if fmap_method == 1:
 #elif fmap_method == 2:
     # implement
 
-    
+
 # THE LINES BELOW ARE STUDY-SPECIFIC (depend on acquired functional conditions)
 n_dummy = 4                                                     # number of dummy scans to discard to allow for T1 equilibration
 
@@ -265,8 +265,8 @@ sess_nr_list = list(range(0, len(sess_id_list)))
 
 
 # Get TR/TE/slice timing info from DICOM of sub-01
-# 
-# Future improvement: don't hard-code this 
+#
+# Future improvement: don't hard-code this
 
 # In[6]:
 
@@ -321,17 +321,17 @@ TR
 # In[10]:
 
 
-# effective echo spacing 
+# effective echo spacing
 bandwidth_per_pixel_phase_encode = dc[0x0019, 0x1028].value
 acquisition_matrix_text = dc[0x0051, 0x100b].value
 matrix_size_phase = float(re.search(r'\d+', acquisition_matrix_text).group())
-                                    # NOTE: The size of the image in the phase direction 
-                                    # is *usually* the first number in the field (0051, 100b), 
-                                    # AcquisitionMatrixText. This is, however, not always the 
-                                    # case, so it is better to determine the actual size 
-                                    # (rows or columns) of your reconstructed image in the 
-                                    # phase encode direction. You can also just read the 
-                                    # effective echo spacing from the Series Info screen 
+                                    # NOTE: The size of the image in the phase direction
+                                    # is *usually* the first number in the field (0051, 100b),
+                                    # AcquisitionMatrixText. This is, however, not always the
+                                    # case, so it is better to determine the actual size
+                                    # (rows or columns) of your reconstructed image in the
+                                    # phase encode direction. You can also just read the
+                                    # effective echo spacing from the Series Info screen
                                     # in MRIConvert if you are running the latest version.
 effective_echo_spacing = 1/(bandwidth_per_pixel_phase_encode + matrix_size_phase)
 
@@ -339,9 +339,9 @@ effective_echo_spacing = 1/(bandwidth_per_pixel_phase_encode + matrix_size_phase
 total_readout_time = (matrix_size_phase - 1) * effective_echo_spacing
 
 # deltaTE
-delta_TE = 1.02                      # in milliseconds [ms]      
-                                     # (a float, nipype default value: 2.46) 
-                                     # echo time difference of the fieldmap 
+delta_TE = 1.02                      # in milliseconds [ms]
+                                     # (a float, nipype default value: 2.46)
+                                     # echo time difference of the fieldmap
                                      # sequence in ms. (usually 2.46ms in Siemens)
 
 
@@ -403,7 +403,7 @@ acquisitionParams.inputs.delta_TE = delta_TE
 
 
 # ### Grab data
-# 
+#
 # DataGrabber is an interface for collecting files from hard drive. It is very flexible and supports almost any file organization of your data you can imagine.
 # <br>More info: https://nipype.readthedocs.io/en/0.11.0/users/grabbing_and_sinking.html
 
@@ -412,10 +412,10 @@ acquisitionParams.inputs.delta_TE = delta_TE
 # In[16]:
 
 
-datasource = Node(DataGrabber(infields=['subject_id'], outfields=['UNI', 'T1', 
-                                                                  'fmap_magnitude1', 
+datasource = Node(DataGrabber(infields=['subject_id'], outfields=['UNI', 'T1',
+                                                                  'fmap_magnitude1',
                                                                   'fmap_magnitude2',
-                                                                  'fmap_phasediff', 
+                                                                  'fmap_phasediff',
                                                                   'subject_id']),
                  name='datasource')
 datasource.inputs.base_directory = data_dir
@@ -466,7 +466,7 @@ wf.connect([(datasource,convertT1ToNii,[('T1', 'in_file')])])
 # In[21]:
 
 
-datasourceFunc = Node(DataGrabber(infields=['subject_id','sess_id'], outfields=['sess_id', 
+datasourceFunc = Node(DataGrabber(infields=['subject_id','sess_id'], outfields=['sess_id',
                                                                   'subject_id']),
                  name='datasourceFunc')
 datasourceFunc.inputs.base_directory = data_dir
@@ -521,18 +521,18 @@ datasourceManualEdits.inputs.template_args = dict(#coreg_itksnap_struct2func_txt
 # In[24]:
 
 
-if manual_edits: 
+if manual_edits:
     wf.connect([(subjects, datasourceManualEdits, [('subject_id', 'subject_id')])])
 
 
 # ### Calculate field map
-# 
-# Using fsl_prepare_fieldmap. 
-# 
+#
+# Using fsl_prepare_fieldmap.
+#
 # "If you have data from a SIEMENS scanner then we strongly recommend that the tool fsl_prepare_fieldmap is used to generate the required input data for FEAT or fugue. Fieldmap data from a SIEMENS scanner takes the form of one phase difference image and two magnitude images (one for each echo time). In the following, where a magnitude image is required, pick the "best looking" one. This image is used for registration and masking but the process is not particularly sensitive to the quality and typically either image will work fine.
-# 
-# Brain extraction of the magnitude image is very important and must be tight - that is, it must exclude all non-brain voxels and any voxels with only a small partial volume contribution. The reason for this is that these areas are normally very noisy in the phase image (look at them in FSLView - if they are not noisy then this is not so important). It is crucial that the mask (derived from this brain extracted image) contains few of these noisy voxels. This is most easily done by making the brain extraction very tight, erring on excluding brain voxels. The exclusion of brain voxels in this instance is actually fine and will have no repercussions, since the fieldmap is extrapolated beyond this mask, and that is the only purpose that the mask plays. Therefore make sure your mask is (if it can't be perfect) too small. As noted above, either magnitude image (from the different echos) can normally be used here - it is not that important." 
-# 
+#
+# Brain extraction of the magnitude image is very important and must be tight - that is, it must exclude all non-brain voxels and any voxels with only a small partial volume contribution. The reason for this is that these areas are normally very noisy in the phase image (look at them in FSLView - if they are not noisy then this is not so important). It is crucial that the mask (derived from this brain extracted image) contains few of these noisy voxels. This is most easily done by making the brain extraction very tight, erring on excluding brain voxels. The exclusion of brain voxels in this instance is actually fine and will have no repercussions, since the fieldmap is extrapolated beyond this mask, and that is the only purpose that the mask plays. Therefore make sure your mask is (if it can't be perfect) too small. As noted above, either magnitude image (from the different echos) can normally be used here - it is not that important."
+#
 # Source: https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FUGUE/Guide#SIEMENS_data
 
 # #### Brain extract magnitude image
@@ -552,10 +552,10 @@ wf.connect([(datasource,betMagnImg,[('fmap_magnitude1','in_file')])])
 
 
 # #### Prepare field map
-# 
+#
 # Prepares a fieldmap suitable for FEAT from SIEMENS data - saves output in rad/s format (e.g. `fsl_prepare_fieldmap SIEMENS images_3_gre_field_mapping images_4_gre_field_mapping fmap_rads 2.65`).
-# 
-# 
+#
+#
 # [Mandatory]
 # delta_TE: (a float, nipype default value: 2.46)
 #         echo time difference of the fieldmap sequence in ms. (usually 2.46ms
@@ -567,8 +567,8 @@ wf.connect([(datasource,betMagnImg,[('fmap_magnitude1','in_file')])])
 # in_phase: (an existing file name)
 #         Phase difference map, in SIEMENS format range from 0-4096 or 0-8192)
 #         flag: %s, position: 2
-#         
-#         
+#
+#
 # https://nipype.readthedocs.io/en/0.12.1/interfaces/generated/nipype.interfaces.fsl.epi.html#preparefieldmap
 
 # In[27]:
@@ -588,7 +588,7 @@ if unwarp:
 
 
 # ### Discard initial fMRI volumes to allow for T1 equilibration
-# 
+#
 
 # In[29]:
 
@@ -605,13 +605,13 @@ wf.connect([(sessions, discardDummies,[('sess_nvol', 't_size')])])
 
 # ### Realignment: head-motion estimation and correction (FSL MCFLIRT)
 # https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/MCFLIRT
-# 
+#
 # https://nipype.readthedocs.io/en/0.12.1/interfaces/generated/nipype.interfaces.fsl.preprocess.html
-# 
-# citation: Jenkinson, M., Bannister, P., Brady, J. M. and Smith, S. M. Improved Optimisation for the Robust and Accurate Linear Registration and Motion Correction of Brain Images. NeuroImage, 17(2), 825-841, 2002. 
-# 
+#
+# citation: Jenkinson, M., Bannister, P., Brady, J. M. and Smith, S. M. Improved Optimisation for the Robust and Accurate Linear Registration and Motion Correction of Brain Images. NeuroImage, 17(2), 825-841, 2002.
+#
 # First, motion-correction with MCFLIRT, within each session, saving the resulting transformation matrices. Then, concatenate the mean runs from each session and realign to each other with MCFLIRT, saving the transformation matrices. Loop through each matrix in the MCFLIRT output and do 'convert_xfm -omat CONCAT_0000 -concat reg_series1_to_series2.mat MAT_0000' for all MAT* files, then use applyxfm4D, with the "-userprefix CONCAT_" option. This does all transformations at once, directly from the original data and minimizes interpolation effects. Based on: https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2=fsl;21c97ca8.06
-# 
+#
 # #### Within sessions
 
 # In[31]:
@@ -624,7 +624,7 @@ save_mats = True             # (a boolean) save transformation parameters
 # In[32]:
 
 
-mcflirtWithinSess = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats), 
+mcflirtWithinSess = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats),
                name='mcflirtWithinSess')
 
 
@@ -678,7 +678,7 @@ save_mats = True               # (a boolean) save transformation parameters
 # In[39]:
 
 
-mcflirtBetweenSess = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats), 
+mcflirtBetweenSess = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats),
                name='mcflirtBetweenSess')
 
 
@@ -695,7 +695,7 @@ MCFLIRT.help()
 
 
 # ##### Concatenate transformation matrices
-# 
+#
 
 # Select given session's transformation mat
 
@@ -744,7 +744,7 @@ wf.connect([(mcflirtWithinSess,concatenateTransforms,[('mat_file','in_file2')])]
 
 
 # Put all transformation matrices for given session in one folder
-# 
+#
 # (Not the most elegant solution, but ApplyXfm4D requires a directory of tranformation mat files as input)
 
 # In[48]:
@@ -754,14 +754,14 @@ def copy_transforms(subject_id,sess_id,sess_nr,sess_nvol,mat_files,working_dir):
     from os.path import join as opj
     import shutil
     import os
-    
+
     transformMatDir = opj(working_dir,'_subject_id_'+subject_id,
                          '_sess_id_'+sess_id+'_sess_nr_'+str(sess_nr)+'_sess_nvol_'+str(sess_nvol),
                          'transformMats')
-    
+
     if not os.path.isdir(transformMatDir):
         os.mkdir(transformMatDir)
-    
+
     for mat in mat_files:
         print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
         print(mat)
@@ -769,11 +769,11 @@ def copy_transforms(subject_id,sess_id,sess_nr,sess_nvol,mat_files,working_dir):
 
         # copy file
         shutil.copy(mat, transformMatDir)
-        
+
         # remove .mat extension (this is how the ApplyXfm4D interface likes it)
         base=os.path.basename(mat)
         filename=os.path.splitext(base)[0]
-        shutil.move(opj(transformMatDir,filename+'.mat'), opj(transformMatDir,filename)) 
+        shutil.move(opj(transformMatDir,filename+'.mat'), opj(transformMatDir,filename))
 
     # session-dependent filename prefix
     prefix = f"MAT_000{sess_nr}_MAT_"
@@ -826,17 +826,17 @@ wf.connect([(copyTransforms,applyRealign,[('prefix','user_prefix')])])
 
 
 # ### Unwarping
-# 
-# fugue (FMRIB's Utility for Geometrically Unwarping EPIs) performs unwarping of an EPI image based on fieldmap data. The input required consists of the EPI image, the fieldmap (as an unwrapped phase map or a scaled fieldmap in rad/s) and appropriate image sequence parameters for the EPI and fieldmap acquisitions: the dwell time for EPI (also known as the echo spacing); and the echo time difference (called asym time herein). 
-# 
+#
+# fugue (FMRIB's Utility for Geometrically Unwarping EPIs) performs unwarping of an EPI image based on fieldmap data. The input required consists of the EPI image, the fieldmap (as an unwrapped phase map or a scaled fieldmap in rad/s) and appropriate image sequence parameters for the EPI and fieldmap acquisitions: the dwell time for EPI (also known as the echo spacing); and the echo time difference (called asym time herein).
+#
 # https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FUGUE/Guide
-# 
+#
 # https://nipype.readthedocs.io/en/0.12.0/interfaces/generated/nipype.interfaces.fsl.preprocess.html#fugue
 
 # In[54]:
 
 
-if unwarp: 
+if unwarp:
     unwarping = Node(FUGUE(),name='unwarping')
 
 # fugue -i epi --dwell=dwelltime --loadfmap=fieldmap -u result
@@ -852,7 +852,7 @@ if unwarp:
 
 
 # ### Slice-timing correction (SPM)
-# 
+#
 # Parker & Razlighi, 2019: "The Benefit of Slice Timing Correction in Common fMRI Preprocessing Pipelines."
 # https://www.frontiersin.org/articles/10.3389/fnins.2019.00821/full
 
@@ -888,15 +888,15 @@ wf.connect([(acquisitionParams,sliceTimingCorr,[('TA','time_acquisition')])])
 #SliceTiming.help()
 
 
-# ### Co-registration of functional and structural data (FreeSurfer bbregister, FLIRT FSL) 
-# 
+# ### Co-registration of functional and structural data (FreeSurfer bbregister, FLIRT FSL)
+#
 # Note: structural data is brought into functional space to avoid superfluous interpolation of functional volumes!
-# 
+#
 # https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FLIRT
-# 
+#
 # https://nipype.readthedocs.io/en/0.12.0/interfaces/generated/nipype.interfaces.fsl.preprocess.html#flirt
-# 
-# 
+#
+#
 
 # #### Concatenate functional runs
 
@@ -935,7 +935,7 @@ save_mats = False               # (a boolean) save transformation parameters
 # In[64]:
 
 
-meanFunc = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats), 
+meanFunc = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats),
                     name='meanFunc')
 
 
@@ -994,7 +994,7 @@ fine_search = 2
 
 if coregister and coreg_method == 'flirt':
     coreg = Node(FLIRT(),name='coreg')
-    
+
     # out_matrix_file=out_matrix_file, coarse_search=coarse_search, fine_search=fine_search
 
 
@@ -1002,10 +1002,10 @@ if coregister and coreg_method == 'flirt':
 
 
 if coregister and coreg_method == 'flirt':
-    wf.connect([(convertT1ToNii, coreg,[('out_file', 'in_file')])])        
-    #wf.connect([(convertT1ToNii, coreg,[('out_file', 'reference')])])   
-    wf.connect([(meanFunc, coreg,[('mean_img', 'reference')])])  
-    
+    wf.connect([(convertT1ToNii, coreg,[('out_file', 'in_file')])])
+    #wf.connect([(convertT1ToNii, coreg,[('out_file', 'reference')])])
+    wf.connect([(meanFunc, coreg,[('mean_img', 'reference')])])
+
     if manual_edits:
         wf.connect([(datasourceManualEdits, coreg,[('coreg_itksnap_struct2func_txt', 'in_matrix_file')])])
         coreg.inputs.apply_xfm = apply_xfm
@@ -1018,7 +1018,7 @@ FLIRT.help()
 
 
 # #### Coregister structural image to mean functional (FS)
-# 
+#
 # not done!
 
 # In[74]:
@@ -1032,7 +1032,7 @@ FLIRT.help()
 
 # if coreg_method == 'freesurfer':
 #     #coreg = Node(MRICoreg(),name='coreg')
-    
+
 #     coreg = Node(BBRegister(contrast_type=contrast_type),name='coreg')
 
 
@@ -1043,7 +1043,7 @@ FLIRT.help()
 #     wf.connect([(convertT1ToNii, coreg,[('out_file', 'source_file')])])
 #     if manual_edits:
 #         wf.connect([(datasourceManualEdits, coreg,[('coreg_itksnap_txt','init_reg_file')])])
-            
+
 #     wf.connect([(meanFunc, coreg,[('mean_img', 'source_file')])])
 
 
@@ -1055,43 +1055,43 @@ FLIRT.help()
 
 # #### Coregister structural image to mean functional (apply manual ITK-snap correction)
 # https://layerfmri.com/2019/02/11/high-quality-registration/
-# 
-# 
+#
+#
 # ##### Mandatory inputs
 # input_image (a pathlike object or string representing an existing file) – Image to apply transformation to (generally a coregistered functional). Maps to a command-line argument: --input %s.
-# 
+#
 # reference_image (a pathlike object or string representing an existing file) – Reference image space that you wish to warp INTO. Maps to a command-line argument: --reference-image %s.
-# 
+#
 # transforms (a list of items which are a pathlike object or string representing an existing file or ‘identity’) – Transform files: will be applied in reverse order. For example, the last specified transform will be applied first. Maps to a command-line argument: %s.
-# 
+#
 # ##### Optional inputs
 # args (a string) – Additional parameters to the command. Maps to a command-line argument: %s.
-# 
+#
 # default_value (a float) – Maps to a command-line argument: --default-value %g. (Nipype default value: 0.0)
-# 
+#
 # dimension (2 or 3 or 4) – This option forces the image to be treated as a specified-dimensional image. If not specified, antsWarp tries to infer the dimensionality from the input image. Maps to a command-line argument: --dimensionality %d.
-# 
+#
 # environ (a dictionary with keys which are a bytes or None or a value of class ‘str’ and with values which are a bytes or None or a value of class ‘str’) – Environment variables. (Nipype default value: {})
-# 
+#
 # float (a boolean) – Use float instead of double for computations. Maps to a command-line argument: --float %d. (Nipype default value: False)
-# 
+#
 # input_image_type (0 or 1 or 2 or 3) – Option specifying the input image type of scalar (default), vector, tensor, or time series. Maps to a command-line argument: --input-image-type %d.
-# 
+#
 # interpolation (‘Linear’ or ‘NearestNeighbor’ or ‘CosineWindowedSinc’ or ‘WelchWindowedSinc’ or ‘HammingWindowedSinc’ or ‘LanczosWindowedSinc’ or ‘MultiLabel’ or ‘Gaussian’ or ‘BSpline’) – Maps to a command-line argument: %s. (Nipype default value: Linear)
-# 
+#
 # interpolation_parameters (a tuple of the form: (an integer) or a tuple of the form: (a float, a float))
-# 
+#
 # invert_transform_flags (a list of items which are a boolean)
-# 
+#
 # num_threads (an integer) – Number of ITK threads to use. (Nipype default value: 1)
-# 
+#
 # out_postfix (a string) – Postfix that is appended to all output files (default = _trans). (Nipype default value: _trans)
-# 
+#
 # output_image (a string) – Output file name. Maps to a command-line argument: --output %s.
-# 
+#
 # print_out_composite_warp_file (a boolean) – Output a composite warp file instead of a transformed image. Requires inputs: output_image.
-# 
-# 
+#
+#
 
 # In[78]:
 
@@ -1118,15 +1118,15 @@ if coregister and coreg_method == 'itk-snap':
 
 
 if coregister and coreg_method == 'itk-snap':
-    wf.connect([(convertT1ToNii, coreg,[('out_file', 'input_image')])])        
-    wf.connect([(meanFunc, coreg,[('mean_img', 'reference_image')])])  
+    wf.connect([(convertT1ToNii, coreg,[('out_file', 'input_image')])])
+    wf.connect([(meanFunc, coreg,[('mean_img', 'reference_image')])])
 
     wf.connect([(datasourceManualEdits, coreg,[('coreg_itksnap_struct2func_txt', 'transforms')])])
 
 
 # #### Coregister mean functional to anatomical image (ANTs)
 # https://layerfmri.com/2019/02/11/high-quality-registration/
-# 
+#
 # antsRegistration \
 # --verbose 1 \
 # --dimensionality 3 \
@@ -1152,10 +1152,10 @@ if coregister and coreg_method == 'itk-snap':
 # --shrink-factors 2x1 \
 # --smoothing-sigmas 1x0vox \
 # -x mask.nii
-# 
-# 
+#
+#
 # See also: https://github.com/ANTsX/ANTs/wiki/Anatomy-of-an-antsRegistration-call
-# 
+#
 # about masking: https://github.com/ANTsX/ANTs/issues/483
 
 # In[82]:
@@ -1163,47 +1163,47 @@ if coregister and coreg_method == 'itk-snap':
 
 verbose = True                          # (a boolean, nipype default value: False)
                                         # argument: ``-v``
-    
+
 dimension = 3                           # dimension: (3 or 2, nipype default value: 3)
                                         # image dimension (2 or 3)
                                         # argument: ``--dimensionality %d``
-        
+
 float = True                            # (a boolean)
                                         # Use float instead of double for computations.
                                         # argument: ``--float %d``
-        
+
 output_transform_prefix = 'registered_' # (a string, nipype default value: transform)
                                         # argument: ``%s``
-    
-output_warped_image = 'registered_Warped.nii.gz'              
+
+output_warped_image = 'registered_Warped.nii.gz'
                                         # (a boolean or a pathlike object or string
                                         # representing a file)
-    
-output_inverse_warped_image = 'registered_InverseWarped.nii.gz'       
+
+output_inverse_warped_image = 'registered_InverseWarped.nii.gz'
                                         # (a boolean or a pathlike object or
                                         # string representing a file)
                                         # requires: output_warped_image
-        
+
 interpolation = 'Linear'                # ('Linear' or 'NearestNeighbor' or 'CosineWindowedSinc'
                                         # or 'WelchWindowedSinc' or 'HammingWindowedSinc' or
                                         # 'LanczosWindowedSinc' or 'BSpline' or 'MultiLabel' or 'Gaussian',
                                         # nipype default value: Linear)
-                                        # argument: ``%s``   
-                
+                                        # argument: ``%s``
+
 use_histogram_matching = False          #  (a boolean or a list of items which are a
                                         # boolean, nipype default value: True)
-                                        # Histogram match the images before registration. 
-        
+                                        # Histogram match the images before registration.
+
 winsorize_lower_quantile = 0.005        # (0.0 <= a floating point number <= 1.0,
                                         # nipype default value: 0.0)
                                         # The Lower quantile to clip image ranges
                                         # argument: ``%s``
-            
+
 winsorize_upper_quantile = 0.995        # (0.0 <= a floating point number <= 1.0,
                                         # nipype default value: 1.0)
                                         # The Upper quantile to clip image ranges
                                         # argument: ``%s``
-            
+
 #initial_moving_transform = 'initial_matrix.txt'   # (a list of items which are an existing file
                                         # name)
                                         # A transform or a list of transforms that should be appliedbefore the
@@ -1211,15 +1211,15 @@ winsorize_upper_quantile = 0.995        # (0.0 <= a floating point number <= 1.0
                                         # transformations are applied in reverse order.
                                         # argument: ``%s``
                                         # mutually_exclusive: initial_moving_transform_com
-                        
+
 transforms = ['Rigid','Affine','SyN']   # (a list of items which are 'Rigid' or 'Affine' or
                                         # 'CompositeAffine' or 'Similarity' or 'Translation' or 'BSpline' or
                                         # 'GaussianDisplacementField' or 'TimeVaryingVelocityField' or
                                         # 'TimeVaryingBSplineVelocityField' or 'SyN' or 'BSplineSyN' or
                                         # 'Exponential' or 'BSplineExponential')
                                         # argument: ``%s``
-                    
-transform_parameters = [(0.1,), (0.1,), (0.1, 3.0, 0.0)]        
+
+transform_parameters = [(0.1,), (0.1,), (0.1, 3.0, 0.0)]
                                         # (a list of items which are a tuple of the form:
                                         # (a float) or a tuple of the form: (a float, a float, a float) or a
                                         # tuple of the form: (a float, an integer (int or long), an integer
@@ -1229,56 +1229,56 @@ transform_parameters = [(0.1,), (0.1,), (0.1, 3.0, 0.0)]
                                         # integer (int or long)) or a tuple of the form: (a float, an
                                         # integer (int or long), an integer (int or long), an integer (int
                                         # or long), an integer (int or long)))
-                                
+
 metric = ['MI', 'MI', 'CC']             # (a list of items which are 'CC' or 'MeanSquares' or 'Demons'
                                         # or 'GC' or 'MI' or 'Mattes' or a list of items which are 'CC' or
                                         # 'MeanSquares' or 'Demons' or 'GC' or 'MI' or 'Mattes')
                                         # the metric(s) to use for each stage. Note that multiple metrics per
                                         # stage are not supported in ANTS 1.9.1 and earlier.
-                
+
 metric_weight = [1.0,1.0,1.0]           # (a list of items which are a float or a list of items
                                         # which are a float, nipype default value: [1.0])
                                         # the metric weight(s) for each stage. The weights must sum to 1 per
                                         # stage.
                                         # requires: metric
-                
+
 radius_or_number_of_bins = [32,32,4]    # (a list of items which are an integer (int
                                         # or long) or a list of items which are an integer (int or long),
                                         # nipype default value: [5])
                                         # the number of bins in each stage for the MI and Mattes metric, the
                                         # radius for other metrics
                                         # requires: metric_weight
-                    
-sampling_strategy = ['Regular','Regular','None']              
+
+sampling_strategy = ['Regular','Regular','None']
                                         # (a list of items which are 'None' or 'Regular' or
                                         # 'Random' or None or a list of items which are 'None' or 'Regular'
                                         # or 'Random' or None)
                                         # the metric sampling strategy (strategies) for each stage
                                         # requires: metric_weight
-                
-sampling_percentage = [0.25, 0.25, None]         
+
+sampling_percentage = [0.25, 0.25, None]
                                         # (a list of items which are 0.0 <= a floating
                                         # point number <= 1.0 or None or a list of items which are 0.0 <= a
                                         # floating point number <= 1.0 or None)
                                         # the metric sampling percentage(s) to use for each stage
                                         # requires: sampling_strategy
-                
+
 convergence_threshold = [1e-6,1e-6,1e-6]# (a list of at least 1 items which are a float,
                                         # nipype default value: [1e-06])
                                         # requires: number_of_iterations
-        
+
 convergence_window_size = [10,10,10]    # (a list of at least 1 items which are an
                                         # integer (int or long), nipype default value: [10])
                                         # requires: convergence_threshold
-        
-number_of_iterations = [[1000,500,250,100], [1000,500,250,100],[100,70,50,20]]       
+
+number_of_iterations = [[1000,500,250,100], [1000,500,250,100],[100,70,50,20]]
                                         # (a list of items which are a list of items
-                                        # which are an integer (int or long))                
-                                        
-shrink_factors = [[8,4,2,1], [8,4,2,1], [8,4,2,1]]  
+                                        # which are an integer (int or long))
+
+shrink_factors = [[8,4,2,1], [8,4,2,1], [8,4,2,1]]
                                         # (a list of items which are a list of items which are
                                         # an integer (int or long))
-    
+
 smoothing_sigmas = [[3.0,2.0,1.0,0.0], [3.0,2.0,1.0,0.0], [3.0,2.0,1.0,0.0]]
                                         # (a list of items which are a list of items which
                                         # are a float)
@@ -1294,21 +1294,21 @@ if coregister and coreg_method == 'antsRegistration':
                               output_transform_prefix=output_transform_prefix,
                               output_warped_image=output_warped_image,
                               output_inverse_warped_image=output_inverse_warped_image,
-                              interpolation=interpolation, 
+                              interpolation=interpolation,
                               use_histogram_matching=use_histogram_matching,
                               winsorize_lower_quantile=winsorize_lower_quantile,
-                              winsorize_upper_quantile=winsorize_upper_quantile, 
-                              transforms=transforms, 
+                              winsorize_upper_quantile=winsorize_upper_quantile,
+                              transforms=transforms,
                               transform_parameters=transform_parameters,
-                              metric=metric, 
-                              metric_weight=metric_weight, 
+                              metric=metric,
+                              metric_weight=metric_weight,
                               radius_or_number_of_bins=radius_or_number_of_bins,
-                              sampling_strategy=sampling_strategy, 
+                              sampling_strategy=sampling_strategy,
                               sampling_percentage=sampling_percentage,
-                              convergence_threshold=convergence_threshold, 
+                              convergence_threshold=convergence_threshold,
                               convergence_window_size=convergence_window_size,
-                              number_of_iterations=number_of_iterations, 
-                              shrink_factors=shrink_factors, 
+                              number_of_iterations=number_of_iterations,
+                              shrink_factors=shrink_factors,
                               smoothing_sigmas=smoothing_sigmas),
                  name='coreg')
 
@@ -1319,20 +1319,20 @@ if coregister and coreg_method == 'antsRegistration':
 if coregister and coreg_method == 'antsRegistration':
     if coreg_dir == 'func2struct':
         # when moving func 2 struct
-        wf.connect([(datasource, coreg,[('UNI', 'fixed_image')])])    
+        wf.connect([(datasource, coreg,[('UNI', 'fixed_image')])])
         wf.connect([(meanFunc, coreg,[('mean_img', 'moving_image')])])
-        wf.connect([(datasourceManualEdits, coreg,[('coreg_itksnap_func2struct_txt', 'initial_moving_transform')])])    
+        wf.connect([(datasourceManualEdits, coreg,[('coreg_itksnap_func2struct_txt', 'initial_moving_transform')])])
         #wf.connect([(datasource, coreg,[('brainmask', 'fixed_image_masks')])])
         wf.connect([(datasourceManualEdits, coreg,[('manual_midoccmask', 'fixed_image_masks')])])
-        
+
     elif coreg_dir == 'struct2func':
         # when moving struct 2 func:
-        wf.connect([(meanFunc, coreg,[('mean_img', 'fixed_image')])]) 
+        wf.connect([(meanFunc, coreg,[('mean_img', 'fixed_image')])])
         wf.connect([(datasource, coreg,[('UNI', 'moving_image')])])
         wf.connect([(datasourceManualEdits, coreg,[('coreg_itksnap_struct2func_txt', 'initial_moving_transform')])])
         #wf.connect([(datasource, coreg,[('brainmask', 'moving_image_masks')])])
         wf.connect([(datasourceManualEdits, coreg,[('manual_midoccmask', 'moving_image_masks')])])
-        
+
 
 
 # In[ ]:
@@ -1363,17 +1363,17 @@ applyCoreg2MeanFunc = Node(ApplyTransforms(interpolation=interpolation,
 if coregister and coreg_method == 'antsRegistration':
     if coreg_dir == 'func2struct':
         output_image = 'reg_meanFunc.nii'
-        wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'input_image')])]) 
-        wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'reference_image')])]) 
-        wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])]) 
-        
+        wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'input_image')])])
+        wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'reference_image')])])
+        wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])])
+
     elif coreg_dir == 'struct2func':
         output_image = 'reg_UNI.nii'
-        wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'reference_image')])]) 
-        wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'input_image')])]) 
-        wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])]) 
-        
-        
+        wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'reference_image')])])
+        wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'input_image')])])
+        wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])])
+
+
     applyCoreg2MeanFunc.inputs.output_image = output_image
 
 
@@ -1392,8 +1392,8 @@ applyCoreg = Node(ApplyTransforms(input_image_type=3,interpolation=interpolation
 if coregister and coreg_method == 'antsRegistration':
     if coreg_dir == 'func2struct':
         wf.connect([(sliceTimingCorr,applyCoreg,[('timecorrected_files','input_image')])])
-        wf.connect([(datasource, applyCoreg,[('UNI', 'reference_image')])]) 
-        wf.connect([(coreg, applyCoreg,[('forward_transforms', 'transforms')])]) 
+        wf.connect([(datasource, applyCoreg,[('UNI', 'reference_image')])])
+        wf.connect([(coreg, applyCoreg,[('forward_transforms', 'transforms')])])
 
 
 # In[ ]:
@@ -1443,7 +1443,7 @@ surfaceProjectMeanFunc = Node(SampleToSurface(reg_header=reg_header,
 
 if coregister and coreg_method == 'antsRegistration':
     if coreg_dir == 'func2struct':
-        wf.connect([(applyCoreg2MeanFunc,surfaceProjectMeanFunc,[('output_image', 'source_file')])]) 
+        wf.connect([(applyCoreg2MeanFunc,surfaceProjectMeanFunc,[('output_image', 'source_file')])])
         wf.connect([(subjects,surfaceProjectMeanFunc,[('subject_id', 'subject_id')])])
         wf.connect([(hemi_depth,surfaceProjectMeanFunc,[('hemi', 'hemi')])])
         wf.connect([(hemi_depth,surfaceProjectMeanFunc,[('sampling_range', 'sampling_range')])])
@@ -1466,7 +1466,7 @@ surfaceProject = Node(SampleToSurface(reg_header=reg_header,
 
 if coregister and coreg_method == 'antsRegistration':
     if coreg_dir == 'func2struct':
-        wf.connect([(applyCoreg,surfaceProject,[('output_image', 'source_file')])]) 
+        wf.connect([(applyCoreg,surfaceProject,[('output_image', 'source_file')])])
         wf.connect([(subjects,surfaceProject,[('subject_id', 'subject_id')])])
         wf.connect([(hemi_depth,surfaceProject,[('hemi', 'hemi')])])
         wf.connect([(hemi_depth,surfaceProject,[('sampling_range', 'sampling_range')])])
@@ -1497,7 +1497,7 @@ surfaceProjectOccipitalMask = Node(SampleToSurface(reg_header=reg_header,
 
 if coregister and coreg_method == 'antsRegistration':
     if coreg_dir == 'func2struct':
-        wf.connect([(datasourceManualEdits,surfaceProjectOccipitalMask,[('manual_occipitalmask', 'source_file')])]) 
+        wf.connect([(datasourceManualEdits,surfaceProjectOccipitalMask,[('manual_occipitalmask', 'source_file')])])
         wf.connect([(subjects,surfaceProjectOccipitalMask,[('subject_id', 'subject_id')])])
         wf.connect([(hemi_depth,surfaceProjectOccipitalMask,[('hemi', 'hemi')])])
         wf.connect([(hemi_depth,surfaceProjectOccipitalMask,[('sampling_range', 'sampling_range')])])
@@ -1516,7 +1516,7 @@ def mri_vol2label_bash(subjects_dir,subject_id,working_dir,hemi,sampling_range,s
                    '_hemi_'+hemi+'_sampling_range_'+str(sampling_range),'makeOccLabel',
                    hemi+'_occ_depth'+str(sampling_range)+'.label')
     bash_command = 'mri_vol2label --i '+surface_file+' --id 1 --surf '+subject_id + ' '+ hemi + ' --l '+out_file
-    
+
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
     print(out_file)
     print(bash_command)
@@ -1524,7 +1524,7 @@ def mri_vol2label_bash(subjects_dir,subject_id,working_dir,hemi,sampling_range,s
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
 
     os.system(bash_command)
-    
+
     return out_file
 
 
@@ -1571,12 +1571,12 @@ if coregister and coreg_method == 'antsRegistration':
 
 
 #if coregister:
-#    wf.connect([(datasourceManualEdits,occipitalGM,[('binarizedmeanfunc', 'in_file')])]) 
-#    wf.connect([(datasourceManualEdits,occipitalGM,[('occipital', 'operand_file')])]) 
+#    wf.connect([(datasourceManualEdits,occipitalGM,[('binarizedmeanfunc', 'in_file')])])
+#    wf.connect([(datasourceManualEdits,occipitalGM,[('occipital', 'operand_file')])])
 
 
 # ### Put data in sink
-# 
+#
 # A workflow working directory is like a cache. It contains not only the outputs of various processing stages, it also contains various extraneous information such as execution reports, hashfiles determining the input state of processes. All of this is embedded in a hierarchical structure that reflects the iterables that have been used in the workflow. This makes navigating the working directory a not so pleasant experience. And typically the user is interested in preserving only a small percentage of these outputs. The DataSink interface can be used to extract components from this cache and store it at a different location.
 
 # In[ ]:
@@ -1617,18 +1617,18 @@ wf.connect([(sliceTimingCorr,dataSink,[('timecorrected_files','func.sliceTimeCor
 if coregister:
     if coreg_method == 'antsRegistration':
         wf.connect([(coreg,dataSink,[('warped_image','func.coreg')])])
-        wf.connect([(coreg, dataSink,[('forward_transforms', 'func.coreg.@forwardTransform')])]) 
+        wf.connect([(coreg, dataSink,[('forward_transforms', 'func.coreg.@forwardTransform')])])
         wf.connect([(coreg, dataSink,[('reverse_transforms', 'func.coreg.@reverseTransform')])])
 
         wf.connect([(applyCoreg, dataSink,[('output_image', 'func.coreg.@reg_func')])])
-        
+
     elif coreg_method == 'itk-snap':
         wf.connect([(coreg,dataSink,[('output_image','func.coreg')])])
-    
+
 ## occipital GM mask for pRF mapping
 #if manual_edits:
 #    wf.connect([(occipitalGM,dataSink,[('out_file','func.occipitalGM')])])
-    
+
 #if coreg_method == 'flirt':
 #    wf.connect([(coreg,dataSink,[('out_file','func.coreg')])])
 #    wf.connect([(coreg,dataSink,[('out_matrix_file','func.coreg.@out_matrix_file')])])
@@ -1640,7 +1640,7 @@ if coregister:
 
 
 # ### Put pRF analysis data in separate sink
-# 
+#
 
 # In[ ]:
 
@@ -1655,16 +1655,16 @@ prfSink.inputs.base_directory = pRF_dir
 if coregister and coreg_method == 'antsRegistration':
     # coregistered mean functional
     wf.connect([(applyCoreg2MeanFunc,prfSink,[('output_image','data.coreg_meanFunc')])])
-    
-    # coregistered other functional runs
-    wf.connect([(applyCoreg,prfSink,[('output_image','data.coreg')])])
-    
+
+    # # coregistered other functional runs
+    # wf.connect([(applyCoreg,prfSink,[('output_image','data.coreg')])])
+
     # surface projected mean functional
     wf.connect([(surfaceProjectMeanFunc,prfSink,[('out_file','data.surfs_meanFunc')])])
-    
+
     # surface projected other functional runs
     wf.connect([(surfaceProject,prfSink,[('out_file','data.surfs')])])
-    
+
     # occipital labels
     wf.connect([(makeOccLabel,prfSink,[('out_file','data.occLabels')])])
 
@@ -1686,4 +1686,3 @@ if run_pipeline:
         wf.run()
     else:
         wf.run('MultiProc', plugin_args={'n_procs': n_procs})
-

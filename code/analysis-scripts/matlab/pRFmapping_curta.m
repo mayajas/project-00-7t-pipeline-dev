@@ -1,5 +1,9 @@
 function pRFmapping_curta(sub,depth_idx,ncpus)
-p = parpool('local',ncpus);
+if ncpus > 1
+    p = parpool('local',ncpus);
+    disp(['Parpool size: ' num2str(p.NumWorkers)])
+end
+
 project_name    = 'project-00-7t-pipeline-dev';
 
 % set paths

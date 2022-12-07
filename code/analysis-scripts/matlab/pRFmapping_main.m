@@ -16,12 +16,14 @@ addpath(scripts_path)
 addpath(genpath(fullfile(programs_path,'vistasoft')))
 addpath(genpath(fullfile(programs_path,'spm12')))
 rmpath(genpath(fullfile(programs_path,'spm12','external','fieldtrip')))
-addpath(genpath(fullfile(programs_path,'samsrf_local')))
+rmpath(genpath(fullfile(programs_path,'samsrf_local')))
+addpath(genpath(fullfile(programs_path,'samsrf')))
+
 
 % iterables
 depth_text                       = {'-1.5','-1.0','-0.5','0.0','0.5','1.0','1.5','2.0','2.5'};
 
-for sub = 2%1:4
+for sub = 1%1:4
     thisSubject = ['sub-0' num2str(sub)];
     surfsdir = [data_path 'surfs/_subject_id_' thisSubject];
     maskdir = [data_path 'occLabels/_subject_id_' thisSubject];

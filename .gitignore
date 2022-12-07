@@ -1,0 +1,5 @@
+*.egg-info
+data
+_ignore
+reports/notes
+tests
