@@ -23,13 +23,13 @@ addpath(genpath(fullfile(programs_path,'samsrf')))
 % iterables
 depth_text                       = {'-1.5','-1.0','-0.5','0.0','0.5','1.0','1.5','2.0','2.5'};
 
-for sub = 1%1:4
+for sub = 1:4
     thisSubject = ['sub-0' num2str(sub)];
     surfsdir = [data_path 'surfs/_subject_id_' thisSubject];
     maskdir = [data_path 'occLabels/_subject_id_' thisSubject];
     fsdir       = [FS_path thisSubject];
     
-    for depth_idx = 4%1:length(depth_text)
+    for depth_idx = 1:length(depth_text)
         % get fMRI and pRF parameters  
         params = fMRIparameters(depth_text{depth_idx});
         params = pRFparameters(params); 

@@ -65,7 +65,8 @@ function runPRFmapping(surfsdir,maskdir,fsdir,scripts_path,params,depth_text)
     %%  RETINOTOPIC MAPPING
     for pRF_stim = 1:params.pRF.num_stimuli
         for pRF_con = 1:length(params.pRF.stimulus_names{pRF_stim})
-            hems = 1:2;
+            %hems = 1:2;
+            hems = 1;
             for hem = hems
                 if hem == 1
                     hem_txt = 'lh';
@@ -95,13 +96,13 @@ function runPRFmapping(surfsdir,maskdir,fsdir,scripts_path,params,depth_text)
                     Standard_2d_Gaussian_Prf(params.pRF.path{pRF_stim}{pRF_con},SrfFiles, Roi, prf_params)
                 end
 
-%                 %   Post-processing pRF map
-%                 if exist([hem_txt '_pRF_Gaussian.mat'],'file') && ~exist(['postproc_' hem_txt '_pRF_Gaussian.mat'],'file')
-%                     load([hem_txt '_pRF_Gaussian.mat'],'Model','Srf')
-%                     Roi = [fsdir filesep 'label' filesep hem_txt '_occ_depth' depth_text];
-%                     Srf = samsrf_surfcalcs(Srf,Roi,0.01,[params.pRF.min_ecc{pRF_stim}(pRF_con) params.pRF.max_ecc{pRF_stim}(pRF_con)]);
-%                     save(['postproc_' hem_txt '_pRF_Gaussian.mat'],'Model','Srf','-v7.3');
-%                 end
+                %   Post-processing pRF map
+                if exist([hem_txt '_pRF_Gaussian.mat'],'file') && ~exist(['postproc_' hem_txt '_pRF_Gaussian.mat'],'file')
+                    load([hem_txt '_pRF_Gaussian.mat'],'Model','Srf')
+                    Roi = [fsdir filesep 'label' filesep hem_txt '_occ_depth' depth_text];
+                    Srf = samsrf_surfcalcs(Srf,Roi,0.01,[params.pRF.min_ecc{pRF_stim}(pRF_con) params.pRF.max_ecc{pRF_stim}(pRF_con)]);
+                    save(['postproc_' hem_txt '_pRF_Gaussian.mat'],'Model','Srf','-v7.3');
+                end
                 
 %                 % Display maps
 %                 %DisplayMaps
