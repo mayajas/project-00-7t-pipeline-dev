@@ -1656,8 +1656,8 @@ if coregister and coreg_method == 'antsRegistration':
     # coregistered mean functional
     wf.connect([(applyCoreg2MeanFunc,prfSink,[('output_image','data.coreg_meanFunc')])])
 
-    # # coregistered other functional runs
-    # wf.connect([(applyCoreg,prfSink,[('output_image','data.coreg')])])
+    # coregistered other functional runs
+    wf.connect([(applyCoreg,prfSink,[('output_image','data.coreg')])])
 
     # surface projected mean functional
     wf.connect([(surfaceProjectMeanFunc,prfSink,[('out_file','data.surfs_meanFunc')])])
