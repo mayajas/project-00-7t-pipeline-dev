@@ -14,12 +14,12 @@ depth_text                       = {'-1.5','-1.0','-0.5','0.0','0.5','1.0','1.5'
 depth_val                        = [-1.5,-1.0,-0.5,0.0,0.5,1.0,1.5,2.0,2.5];
 Bins                             = 0:6;
 Roi                              = '';
-Threshold                        = 0.01;
+Threshold                        = 0.1;
 hems                             = {'lh','rh'};
 sub_id                           = {'sub-01','sub-02','sub-03','sub-04'};
 
 try
-    load([pRF_path 'pRFsizes.mat'])
+    load([pRF_path 'results' filesep 'pRFsizes.mat'])
 catch
     PrfBinned                        = nan(length(sub_id),length(depth_text),length(Bins)-1,length(hems));
     PrfEcc2                          = nan(length(sub_id),length(depth_text),length(hems));
@@ -80,7 +80,7 @@ for sub = 1:length(sub_id)
         end
     end
 end
-save([pRF_path 'pRFsizes.mat'],'PrfBinned','PrfEcc2','depth_val','Bins','hems')
+save([pRF_path 'results' filesep 'pRFsizes.mat'],'PrfBinned','PrfEcc2','depth_val','Bins','hems')
 
 %% Plots
 close all
