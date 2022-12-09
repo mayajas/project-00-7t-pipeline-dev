@@ -10,19 +10,21 @@ addpath(scripts_path)
 addpath(genpath(fullfile(programs_path,'samsrf')))
 
 % define depth, sub, hemi variables
-depth_text                       = {'-1.5','-1.0','-0.5','0.0','0.5','1.0','1.5','2.0','2.5'};
-depth_val                        = [-1.5,-1.0,-0.5,0.0,0.5,1.0,1.5,2.0,2.5];
+% depth_text                       = {'-1.5','-1.0','-0.5','0.0','0.5','1.0','1.5','2.0','2.5'};
+% depth_val                        = [-1.5,-1.0,-0.5,0.0,0.5,1.0,1.5,2.0,2.5];
+depth_text                       = {'0.0','0.5','1.0','1.5','2.0','2.5'};
+depth_val                        = [0.0,0.5,1.0,1.5,2.0,2.5];
 Bins                             = 0:6;
-Roi                              = '';
-Threshold                        = 0.1;
+Threshold                        = 0.6;
 hems                             = {'lh','rh'};
 sub_id                           = {'sub-01','sub-02','sub-03','sub-04'};
+ROIs                             = {'V1','V2','V3','V4'};
 
 try
     load([pRF_path 'results' filesep 'pRFsizes.mat'])
 catch
-    PrfBinned                        = nan(length(sub_id),length(depth_text),length(Bins)-1,length(hems));
-    PrfEcc2                          = nan(length(sub_id),length(depth_text),length(hems));
+    PrfBinned                        = nan(length(sub_id),length(depth_text),length(Bins)-1,length(hems),length(ROIs));
+    PrfEcc2                          = nan(length(sub_id),length(depth_text),length(hems),length(ROIs));
 end
 
 
@@ -32,33 +34,58 @@ for sub = 1:length(sub_id)
             if ~isnan(PrfBinned(sub,depth_idx,:,hem))
                 continue
             end
-            
+
             cd([pRF_path fullfile('data_FS',sub_id{sub},['fMRI/bar/depth_' depth_text{depth_idx}])])
             try
                 load(['postproc_' hems{hem} '_pRF_Gaussian.mat'])
                 SrfIv = Srf;
+                
+                for roi = 1:length(ROIs)
+                    try
+                        Roi_file = [pRF_path ...
+                            fullfile('data_FS',sub_id{sub},['fMRI/bar/depth_0.0/ROIs_tproc_' hems{hem} '_pRF_Gaussian' ...
+                            filesep hems{hem} '_' ROIs{roi}])];
+                        if ~exist([Roi_file '.label'])
+                            error('ROIs not yet delineated!')
+                        end
+                    catch
+                        Roi_file = '';
+%                         if roi > 1
+                            continue
+%                         end
+                    end
+                    disp('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
+                    disp([sub_id{sub} ', depth: ' depth_text{depth_idx} ', hemi: ' hems{hem} ', roi: ' ROIs{roi}])
+                    [Res,~] = samsrf_plot(Srf, 'Sigma', SrfIv, 'Eccentricity', Bins, Roi_file, Threshold);
 
-                [Res,~] = samsrf_plot(Srf, 'Sigma', SrfIv, 'Eccentricity', Bins, Roi, Threshold);
+                    % bin results by eccentricity
+                    BinnedRes = zeros(1,length(Bins)-1);
+                    for ecc = 1:length(Bins)-1
+                        BinnedRes(ecc) = mean(Res(Res(:,1) >= Bins(ecc) & Res(:,1) < Bins(ecc+1),2));
+                    end
+                    PrfBinned(sub,depth_idx,:,hem,roi) = BinnedRes;
 
-                % bin results by eccentricity
-                BinnedRes = zeros(1,length(Bins)-1);
-                for ecc = 1:length(Bins)-1
-                    BinnedRes(ecc) = mean(Res(Res(:,1) >= Bins(ecc) & Res(:,1) < Bins(ecc+1),2));
+                    % fit line, get estimate at 2deg
+                    c = polyfit(Res(:,1),Res(:,2),1);
+                    % Display evaluated equation y = m*x + b
+                    disp(['Equation is y = ' num2str(c(1)) '*x + ' num2str(c(2))])
+                    PrfEcc2(sub,depth_idx,hem,roi) = c(1)*2 + c(2);
                 end
-                PrfBinned(sub,depth_idx,:,hem) = BinnedRes;
-
-                % fit line, get estimate at 2deg
-                c = polyfit(Res(:,1),Res(:,2),1);
-                % Display evaluated equation y = m*x + b
-                disp(['Equation is y = ' num2str(c(1)) '*x + ' num2str(c(2))])
-                PrfEcc2(sub,depth_idx,hem) = c(1)*2 + c(2);
-
+                
                 %% convert Samsrf Srf file to FS label
+                x0_idx    = 2;
+                y0_idx    = 3;
                 Sigma_idx = 4;
                 R2_idx    = 8;
                 Cmf_idx   = 10;
                 if ~exist('FS_labels')
                     mkdir('FS_labels')
+                end
+                if ~exist(['FS_labels' filesep hems{hem} '_x0.label'])
+                    samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_x0'], x0_idx)
+                end
+                if ~exist(['FS_labels' filesep hems{hem} '_y0.label'])
+                    samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_y0'], y0_idx)
                 end
                 if ~exist(['FS_labels' filesep hems{hem} '_Sigma.label'])
                     samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_Sigma'], Sigma_idx)
@@ -69,14 +96,18 @@ for sub = 1:length(sub_id)
                 if ~exist(['FS_labels' filesep hems{hem} '_Cmf.label'])
                     samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_Cmf'], Cmf_idx)
                 end
-
                 results_dir = [pRF_path fullfile('results',sub_id{sub},['depth_' depth_text{depth_idx}])];
                 if ~exist(results_dir)
                     mkdir(results_dir)
                 end
                 copyfile('FS_labels/*',results_dir)
+                
+                if depth_val(depth_idx)==0
+                    copyfile(['ROIs_tproc_' hems{hem} '_pRF_Gaussian/*'],results_dir)
+                end
             catch
             end
+            
         end
     end
 end
@@ -84,9 +115,28 @@ save([pRF_path 'results' filesep 'pRFsizes.mat'],'PrfBinned','PrfEcc2','depth_va
 
 %% Plots
 close all
+% pRF size as a function of ecc
+figure;
+subs=[1 length(sub_id)];
+sub_idx=1;
+for sub = subs
+    for hem = 1%:length(hems)
+        subplot(1,2,sub_idx)
+        for roi = 1:length(ROIs)
+            y=squeeze(squeeze(PrfBinned(sub,1,:,hem,roi)));
+            plot(Bins(2:end),y)
+            hold on;
+        end
+    end
+    sub_idx = sub_idx+1;
+end
+legend(ROIs)
+
+
 % plot left/right hem separately
-for hem = 1:length(hems)
-    figure(hem);
+sub=1;
+for hem = 1%:length(hems)
+    figure(sub);
     if hem == 1
         title('Left hemisphere')
     else 
@@ -94,8 +144,10 @@ for hem = 1:length(hems)
     end
     for ecc = 1:length(Bins)-1
         subplot(3,2,ecc)
-        plot(depth_val,nanmean(squeeze(PrfBinned(:,:,ecc,hem)),1))
-        title(['Ecc=' num2str(Bins(ecc+1)) 'deg'])
+        %plot(depth_val,nanmean(squeeze(PrfBinned(:,:,ecc,hem,1)),1))
+        y=squeeze(squeeze(PrfBinned(sub,:,ecc,hem,1)));
+        plot(depth_val(~isnan(y)),y(~isnan(y)))
+        title(['Ecc=' num2str(Bins(ecc)+1) 'deg'])
         xticks(depth_val)
         xticklabels(depth_val)
         xlabel('distance from GM/WM border (mm)')
@@ -107,7 +159,7 @@ end
 figure;
 for ecc = 1:length(Bins)-1
     subplot(3,2,ecc)
-    plot(depth_val,nanmean(squeeze(nanmean(squeeze(PrfBinned(:,:,ecc,:)),1)),2))
+    plot(depth_val,nanmean(squeeze(nanmean(squeeze(PrfBinned(:,:,ecc,:,1)),1)),2))
     title(['Ecc=' num2str(Bins(ecc+1)) 'deg'])
     xticks(depth_val)
     xticklabels(depth_val)
