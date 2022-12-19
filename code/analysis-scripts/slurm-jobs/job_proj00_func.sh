@@ -5,10 +5,10 @@
 #SBATCH --mail-type=end
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mem-per-cpu=5G
-#SBATCH --cpus-per-task=2
-#SBATCH --time=5-00:00:00
-#SBATCH --qos=standard
+#SBATCH --mem-per-cpu=10G
+#SBATCH --cpus-per-task=8
+#SBATCH --time=2:00:00
+#SBATCH --qos=prio
 
 # activate py36 environment
 # include for this reason: https://stackoverflow.com/questions/34534513/calling-conda-source-activate-from-bash-script
@@ -30,4 +30,5 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 unset _JAVA_OPTIONS
 
 # run the thing
-ipython project-00-7t-pipeline-dev-functional-pRF.py > log_p00s0203_func.txt
+cd /home/mayaaj90/projects/project-00-7t-pipeline-dev/code/analysis-scripts/python
+ipython project-00-7t-pipeline-dev-functional-pRF.py > log_p00_func.txt
