@@ -10,22 +10,23 @@ addpath(scripts_path)
 addpath(genpath(fullfile(programs_path,'samsrf')))
 
 % define depth, sub, hemi variables
-% depth_text                       = {'-1.5','-1.0','-0.5','0.0','0.5','1.0','1.5','2.0','2.5'};
-% depth_val                        = [-1.5,-1.0,-0.5,0.0,0.5,1.0,1.5,2.0,2.5];
-depth_text                       = {'0.0','0.5','1.0','1.5','2.0','2.5'};
-depth_val                        = [0.0,0.5,1.0,1.5,2.0,2.5];
+depth_text                       = {'-1.5','-1.0','-0.5','0.0','0.5','1.0','1.5','2.0','2.5'};
+depth_val                        = [-1.5,-1.0,-0.5,0.0,0.5,1.0,1.5,2.0,2.5];
+% depth_text                       = {'0.0','0.5','1.0','1.5','2.0','2.5'};
+% depth_val                        = [0.0,0.5,1.0,1.5,2.0,2.5];
 Bins                             = 0:6;
-Threshold                        = 0.6;
+Threshold                        = 0.3;
 hems                             = {'lh','rh'};
 sub_id                           = {'sub-01','sub-02','sub-03','sub-04'};
-ROIs                             = {'V1','V2','V3','V4'};
+%ROIs                             = {'V1','V2','V3','V4'};
+ROIs                             = {'V1','V2d','V2v','V3d','V3v','V4'};
 
-try
-    load([pRF_path 'results' filesep 'pRFsizes.mat'])
-catch
+% try
+%     load([pRF_path 'results' filesep 'pRFsizes.mat'])
+% catch
     PrfBinned                        = nan(length(sub_id),length(depth_text),length(Bins)-1,length(hems),length(ROIs));
     PrfEcc2                          = nan(length(sub_id),length(depth_text),length(hems),length(ROIs));
-end
+% end
 
 
 for sub = 1:length(sub_id)
@@ -81,21 +82,40 @@ for sub = 1:length(sub_id)
                 if ~exist('FS_labels')
                     mkdir('FS_labels')
                 end
+                % x0
                 if ~exist(['FS_labels' filesep hems{hem} '_x0.label'])
                     samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_x0'], x0_idx)
                 end
+                % y0
                 if ~exist(['FS_labels' filesep hems{hem} '_y0.label'])
                     samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_y0'], y0_idx)
                 end
+                % pRF size (sigma)
                 if ~exist(['FS_labels' filesep hems{hem} '_Sigma.label'])
                     samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_Sigma'], Sigma_idx)
                 end
+                % goodness of fit (R2)
                 if ~exist(['FS_labels' filesep hems{hem} '_R2.label'])
                     samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_R2'], R2_idx)
                 end
+                % cortical magnification factor (CMF)
                 if ~exist(['FS_labels' filesep hems{hem} '_Cmf.label'])
                     samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_Cmf'], Cmf_idx)
                 end
+                % polar angle
+                Thrsh = 0.01;
+                if ~exist(['FS_labels' filesep hems{hem} '_Polar.label'])
+                    [Srf,Idx] = getPolarEccMaps(Srf,Thrsh,'Polar');
+                    samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_Polar'], Idx)
+                end
+                % eccentricity
+                Thrsh = [0.01 0 6.5];
+                if ~exist(['FS_labels' filesep hems{hem} '_Eccentricity.label'])
+                    [Srf,Idx] = getPolarEccMaps(Srf,Thrsh,'Eccentricity');
+                    samsrf_srf2label(Srf, ['FS_labels' filesep hems{hem} '_Eccentricity'], Idx)
+                end
+                
+                % copy labels to results dir
                 results_dir = [pRF_path fullfile('results',sub_id{sub},['depth_' depth_text{depth_idx}])];
                 if ~exist(results_dir)
                     mkdir(results_dir)
@@ -134,7 +154,7 @@ legend(ROIs)
 
 
 % plot left/right hem separately
-sub=1;
+sub=4;
 for hem = 1%:length(hems)
     figure(sub);
     if hem == 1
@@ -144,15 +164,41 @@ for hem = 1%:length(hems)
     end
     for ecc = 1:length(Bins)-1
         subplot(3,2,ecc)
-        %plot(depth_val,nanmean(squeeze(PrfBinned(:,:,ecc,hem,1)),1))
-        y=squeeze(squeeze(PrfBinned(sub,:,ecc,hem,1)));
-        plot(depth_val(~isnan(y)),y(~isnan(y)))
-        title(['Ecc=' num2str(Bins(ecc)+1) 'deg'])
+        plot(depth_val,nanmean(squeeze(PrfBinned(:,:,ecc,hem,1)),1))
+%         y=squeeze(squeeze(PrfBinned(sub,:,ecc,hem,1)));
+%         plot(depth_val(~isnan(y)),y(~isnan(y)))
+        title(['Ecc=' num2str(Bins(ecc)) '-' num2str(Bins(ecc)+1) 'deg'])
         xticks(depth_val)
         xticklabels(depth_val)
         xlabel('distance from GM/WM border (mm)')
         ylabel('pRF size (deg)')
     end
+end
+
+
+% plot central eccentricities
+figure
+roi = 1;
+subs = 1;
+depths=1:4;
+for hem = 1%:length(hems)
+    if hem == 1
+        title('Left hemisphere')
+    else 
+        title('Right hemisphere')
+    end
+    
+    if length(subs)>1
+        plot(depth_val,nanmean(squeeze(nanmean(squeeze(squeeze(PrfBinned(subs,:,depths,hem,roi))),1)),2))
+    else
+        plot(depth_val,nanmean(squeeze(squeeze(PrfBinned(subs,:,depths,hem,roi))),2))
+    end
+    %title(['Ecc=' num2str(Bins(ecc)) '-' num2str(Bins(ecc)+1) 'deg'])
+    xticks(depth_val)
+    xticklabels(depth_val)
+    xlabel('distance from GM/WM border (mm)')
+    ylabel('pRF size (deg)')
+    title([sub_id{subs} ', ROI: ' ROIs{roi}])
 end
 
 % plot both hems together
