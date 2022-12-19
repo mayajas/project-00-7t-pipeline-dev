@@ -7,7 +7,7 @@ end
 project_name    = 'project-00-7t-pipeline-dev';
 
 % set paths
-scripts_path    = ['/home/mayaaj90/scripts/' project_name '/'];
+scripts_path    = ['/home/mayaaj90/projects/' project_name '/code/analysis-scripts/matlab/'];
 data_path       = ['/scratch/mayaaj90/' project_name '/pRF/data/'];
 FS_path         = ['/scratch/mayaaj90/' project_name '/pRF/data_FS/'];
 programs_path   = '/home/mayaaj90/programs';
