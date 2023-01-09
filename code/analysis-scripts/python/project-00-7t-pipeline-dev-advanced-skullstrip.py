@@ -32,8 +32,8 @@
 # In[1]:
 
 
-from IPython.display import Image
-Image(filename='workflowgraph_advanced-skullstrip.png')
+# from IPython.display import Image
+# Image(filename='workflowgraph_advanced-skullstrip.png')
 
 
 # ### Set preferences
@@ -212,8 +212,8 @@ from nipype.interfaces.fsl import MultiImageMaths
 
 wf_name = 'wf_advanced_skullstrip'
 
-subject_list = ['sub-01','sub-02','sub-03']            # subject identifiers
-#subject_list = ['sub-04']                             # sub-04 doesn't have a T1map -> process separately
+#subject_list = ['sub-01','sub-02','sub-03']            # subject identifiers
+subject_list = ['sub-04']                             # sub-04 doesn't have a T1map -> process separately
 
 UNI_id       = 'UNI.nii'                               # name of T1 UNI image
 INV1_id      = 'INV1.nii'                              # name of INV1 image
@@ -1993,7 +1993,7 @@ copyFSdir4PRF.inputs.pRF_dir = pRF_dir
 # In[121]:
 
 
-if run_FSexternal_branch:
+if run_FSexternal_branch and regenerate_surfaces:
     wf.connect([(autorecon_regenerate_surfaces,copyFSdir4PRF,[('subjects_dir','subjects_dir')])])
     wf.connect([(autorecon_regenerate_surfaces,copyFSdir4PRF,[('subject_id','subject_id')])])
 
