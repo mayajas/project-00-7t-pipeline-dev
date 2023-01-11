@@ -1,7 +1,9 @@
-SUBJECT_ID=sub-04
+SUBJECT_ID="sub-0$1"
+
+echo "Making cortical masks for subject $SUBJECT_ID"
 
 if [ "$SUBJECT_ID" = "sub-04" ]; then
-    FS_DIR=/home/mayajas/scratch/project-00-7t-pipeline-dev/derivatives/wf_advanced_skullstrip_sub-04/_subject_id_$SUBJECT_ID/autorecon_pial
+    FS_DIR=/home/mayajas/scratch/project-00-7t-pipeline-dev/derivatives/wf_advanced_skullstrip_sub-04/_subject_id_$SUBJECT_ID/autorecon_pial_rerun
 else
     FS_DIR=/home/mayajas/scratch/project-00-7t-pipeline-dev/derivatives/wf_advanced_skullstrip/_subject_id_$SUBJECT_ID/autorecon_pial_rerun
 fi
@@ -29,7 +31,7 @@ fslreorient2std $OUT_DIR/meanFunc.nii $OUT_DIR/meanFunc_fsl.nii
 # right hemisphere
 FIXED_IMG=$OUT_DIR/rh_GM.nii
 
-mri_binarize --i $OUT_DIR/ribbon.mgz --o $OUT_DIR/rh_GM.mgz --min $rGM_val --max $rGM_val 
+mri_binarize --i $OUT_DIR/ribbon.mgz --o $OUT_DIR/rh_GM.mgz --match $rGM_val 
 #--dilate 1
 
 mri_convert $OUT_DIR/rh_GM.mgz $FIXED_IMG
@@ -53,7 +55,7 @@ ${ANTSPATH}antsApplyTransforms \
 # left hemisphere
 FIXED_IMG=$OUT_DIR/lh_GM.nii
 
-mri_binarize --i $OUT_DIR/ribbon.mgz --o $OUT_DIR/lh_GM.mgz --min $lGM_val --max $lGM_val 
+mri_binarize --i $OUT_DIR/ribbon.mgz --o $OUT_DIR/lh_GM.mgz --match $lGM_val 
 #--dilate 1
 
 mri_convert $OUT_DIR/lh_GM.mgz $FIXED_IMG
@@ -84,4 +86,4 @@ ${ANTSPATH}antsApplyTransforms \
   -o $OUT_DIR/UNI_funcSpace.nii \
   --interpolation BSpline[5]
 
-  fslreorient2std $OUT_DIR/UNI_funcSpace.nii $OUT_DIR/UNI_funcSpace_fsl.nii
+fslreorient2std $OUT_DIR/UNI_funcSpace.nii $OUT_DIR/UNI_funcSpace_fsl.nii
