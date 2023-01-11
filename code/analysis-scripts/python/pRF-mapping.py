@@ -623,7 +623,7 @@ type(masked_meanFunc)
 
 # Threshold by rsq
 
-rsq_thresh = 0.3
+rsq_thresh = 0.1
 
 x[total_rsq<rsq_thresh] = float('nan')
 y[total_rsq<rsq_thresh] = float('nan')
@@ -677,5 +677,5 @@ nib.save(unmasked_rsq, opj(prfpy_output_dir, hem_list[hem_id]+'_rsq.nii'))
 nib.save(unmasked_pol, opj(prfpy_output_dir, hem_list[hem_id]+'_pol.nii'))  
 nib.save(unmasked_ecc, opj(prfpy_output_dir, hem_list[hem_id]+'_ecc.nii'))  
 
-nib.save(unmasked_barAvg, opj(prfpy_output_dir, 'bar.nii'))  
+nib.save(unmasked_barAvg, opj(prfpy_output_dir, hem_list[hem_id]+'_bar.nii'))  
 
