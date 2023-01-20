@@ -161,7 +161,7 @@ gg = Iso2DGaussianModel(stimulus=prf_stim,
 # Define 2D iso Gaussian model fitter
 gf = Iso2DGaussianFitter(data=bar_data, model=gg, n_jobs=n_jobs, fit_css=False)
 
-# Grid fit parameters
+# Grid fit parameters (2D iso Gaussian model)
 grid_nr      = 30
 max_ecc_size = round(max_ecc_deg,2)
 
@@ -170,7 +170,7 @@ size_grid, ecc_grid, polar_grid = max_ecc_size * np.linspace(0.25,1,grid_nr)**2,
                         np.linspace(0, 2*np.pi, grid_nr)
 pos_prfs_only=False
 
-# Iterative fit parameters
+# Iterative fit parameters (2D iso Gaussian model)
 rsq_thresh_itfit = 0.0005      # float
                             # Rsq threshold for iterative fitting. Must be between 0 and 1.
 verbose       = True        # boolean, optional
@@ -179,34 +179,27 @@ verbose       = True        # boolean, optional
 # Run grid fit then iterative fit
 try:
     try:
-        # if pRF parameters have already been extracted
-        print("Checking if pRF parameters have already been extracted...")
-        f = open(pRF_param_file,'rb')
-        print("PRF parameters good to go!")
+        # if iterative search has already been run
+        print("Checking if grid and iterative fits have already been run...")
+        f = open(iterative_fit_file,'rb')
+        gf = pickle.load(f)
+
+        print("Grid and iterative fits have already been run.")
     except IOError:
-        try:
-            # if iterative search has already been run
-            print("pRF parameters not yet extracted")
-            print("Checking if grid and iterative fits have already been run...")
-            f = open(iterative_fit_file,'rb')
-            gf = pickle.load(f)
+        print("Iterative fit not yet run.")
+        print("Checking if grid fit has been run...")
+        # if grid search has already been run
+        f = open(grid_fit_file,'rb')
+        gf = pickle.load(f)
 
-            print("Grid and iterative fits have already been run.")
-        except IOError:
-            print("Iterative fit not yet run.")
-            print("Checking if grid fit has been run...")
-            # if grid search has already been run
-            f = open(grid_fit_file,'rb')
-            gf = pickle.load(f)
+        print("Grid fit has already been run")
 
-            print("Grid fit has already been run")
+        print("Now running iterative fit")
 
-            print("Now running iterative fit")
+        gf.iterative_fit(rsq_threshold=rsq_thresh_itfit, verbose=verbose)
 
-            gf.iterative_fit(rsq_threshold=rsq_thresh_itfit, verbose=verbose)
-
-            f = open(iterative_fit_file, 'wb')
-            pickle.dump(gf, f)
+        f = open(iterative_fit_file, 'wb')
+        pickle.dump(gf, f)
 
 except IOError:
     print("Neither grid nor iterative fit yet run...")
