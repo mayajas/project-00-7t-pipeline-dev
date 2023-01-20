@@ -49,7 +49,7 @@ ${ANTSPATH}antsApplyTransforms \
   -i $FIXED_IMG \
   -r $MOVING_IMG \
   -t [ $COREG_DIR/registered_0GenericAffine.mat, 1 ] \
-  -o $OUT_DIR/rh_GM_funcSpace.nii.nii \
+  -o $OUT_DIR/rh_GM_funcSpace.nii \
   --interpolation NearestNeighbor
 
 # left hemisphere
@@ -73,7 +73,7 @@ ${ANTSPATH}antsApplyTransforms \
   -i $FIXED_IMG \
   -r $MOVING_IMG \
   -t [ $COREG_DIR/registered_0GenericAffine.mat, 1 ] \
-  -o $OUT_DIR/lh_GM_funcSpace.nii.nii \
+  -o $OUT_DIR/lh_GM_funcSpace.nii \
   --interpolation NearestNeighbor
 
 
