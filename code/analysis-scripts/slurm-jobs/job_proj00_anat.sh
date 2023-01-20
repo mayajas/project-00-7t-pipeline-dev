@@ -5,9 +5,9 @@
 #SBATCH --mail-type=end
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mem-per-cpu=192G
-#SBATCH --cpus-per-task=2
-#SBATCH --time=40:00:00
+#SBATCH --mem-per-cpu=8G
+#SBATCH --cpus-per-task=1
+#SBATCH --time=2:00:00
 #SBATCH --qos=standard
 
 # activate py36 environment
@@ -30,4 +30,5 @@ export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
 echo "Available threads: $OMP_NUM_THREADS"
 
 unset _JAVA_OPTIONS
+cd /home/mayaaj90/projects/project-00-7t-pipeline-dev/code/analysis-scripts/python
 ipython project-00-7t-pipeline-dev-advanced-skullstrip.py > log_p00_anat.txt
