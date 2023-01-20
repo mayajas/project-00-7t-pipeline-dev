@@ -11,7 +11,7 @@ fi
 
 
 COREG_DIR=/home/mayajas/scratch/project-00-7t-pipeline-dev/manualcorr/coreg/_subject_id_$SUBJECT_ID
-OUT_DIR=/home/mayajas/scratch/project-00-7t-pipeline-dev/output/prfpy/$SUBJECT_ID
+OUT_DIR=/home/mayajas/scratch/project-00-7t-pipeline-dev/output/prfpy_DoG_Iso2DGaussianModel/$SUBJECT_ID
 
 MOVING_IMG=/home/mayajas/scratch/project-00-7t-pipeline-dev/derivatives/wf_laminar_fMRI_func_pRF/_subject_id_$SUBJECT_ID/meanFunc/merged_func_mcf.nii_mean_reg.nii
 ANAT_IMG=/home/mayajas/scratch/project-00-7t-pipeline-dev/output/anat/_subject_id_$SUBJECT_ID/UNI_corrected.nii
