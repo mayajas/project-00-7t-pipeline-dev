@@ -5,8 +5,10 @@ import os
 import nibabel as nb
 import numpy as np
 from scipy.ndimage import morphology, generate_binary_structure
+import sys
 
-INPUT = "/home/mayajas/Documents/programs/laynii/test_data/sub-01/ribbon.nii"
+INPUT = sys.argv[1]
+#"/home/mayajas/Documents/programs/laynii/test_data/sub-01/ribbon.nii"
 
 WM_LABELS = [2, 41]
 GM_LABELS = [3, 42]
