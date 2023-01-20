@@ -251,8 +251,8 @@ n_vol_rs_ge = 50                                                # number of volu
 n_vol_rs_se = 50                                                # number of volumes of SE RS pRF mapping stimulus
 
 # iterables
-subject_list = ['sub-01','sub-02','sub-03','sub-04']            # subject identifiers
-# subject_list = ['sub-01']            # subject identifiers
+#subject_list = ['sub-01','sub-02','sub-03','sub-04']            # subject identifiers
+subject_list = ['sub-01']            # subject identifiers
 sess_id_list = ['task-bar_run-01', 'task-bar_run-02',           # func session identifiers
              'task-pol_run-01', 'task-pol_run-02',
              'task-ecc_run-01', 'task-ecc_run-02',

@@ -212,8 +212,8 @@ from nipype.interfaces.fsl import MultiImageMaths
 
 wf_name = 'wf_advanced_skullstrip'
 
-#subject_list = ['sub-01','sub-02','sub-03']            # subject identifiers
-subject_list = ['sub-04']                             # sub-04 doesn't have a T1map -> process separately
+subject_list = ['sub-01','sub-02','sub-03']            # subject identifiers
+#subject_list = ['sub-04']                             # sub-04 doesn't have a T1map -> process separately
 
 UNI_id       = 'UNI.nii'                               # name of T1 UNI image
 INV1_id      = 'INV1.nii'                              # name of INV1 image
