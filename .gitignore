@@ -6,7 +6,6 @@ tests
 code/analysis-scripts/python/prfpy-main
 code/notebooks/crash-*
 code/analysis-scripts/python/hcp_movie-master
-code/notebooks/.ipynb_checkpoints
 code/analysis-scripts/python/crash-20221218-154045-mayaaj90-surfaceProject.a0.a3.a11-ef135607-105b-4d8e-8a16-6eddbf1b7bef.pklz
 code/analysis-scripts/python/crash-20221218-155846-mayaaj90-surfaceProject.a0.a3.a07-a7329be2-717d-4631-80db-5d5afb3383a5.pklz
 code/analysis-scripts/python/crash-20230106-132850-mayaaj90-discardDummies.a2.a3-8145d417-7ec6-44b2-90d3-1b812be0e09e.pklz
@@ -23,8 +22,7 @@ code/analysis-scripts/python/log_prf_sub3_hem0.txt
 code/analysis-scripts/python/log_prf_sub3_hem1.txt
 code/analysis-scripts/python/log_prf.txt
 code/notebooks/Untitled.ipynb
-code/notebooks/.ipynb_checkpoints/project-00-7t-pipeline-dev-functional-pRF-checkpoint.ipynb
-code/notebooks/.ipynb_checkpoints/project-00-7t-pipeline-dev-functional-pRF-checkpoint.ipynb
 code/analysis-scripts/slurm-jobs/log_p00_anat.txt
 code/analysis-scripts/python/.ipynb_checkpoints/pRF-mapping-checkpoint.ipynb
-code/notebooks/.ipynb_checkpoints/project-00-7t-pipeline-dev-functional-pRF-checkpoint.ipynb
+code/analysis-scripts/python/pRF-mapping.ipynb
+code/notebooks/.ipynb_checkpoints/Untitled-checkpoint.ipynb
