@@ -24,6 +24,9 @@ import pandas as pd
 
 import itertools
 
+#################################################################################################################
+# Stimulus size (same for all subjects)
+layer_space        = 'func'
 
 #################################################################################################################
 # Stimulus size (same for all subjects)
@@ -143,12 +146,15 @@ for sub_id in range(0,len(subject_list)):
         ###########################################################################################
         ## Define input data directories and filenames
         # data directories
-        prfpy_dir    = '/home/mayajas/scratch/project-00-7t-pipeline-dev/output/prfpy/'+subject_list[sub_id]
+        prfpy_dir    = '/home/mayajas/scratch/project-00-7t-pipeline-dev/output/prfpy_Iso2DGaussianModel/'+subject_list[sub_id]
         proj_dir     = '/home/mayajas/scratch/project-00-7t-pipeline-dev/'
         data_dir     = opj(proj_dir,'output','func','sliceTimeCorr',
                         '_subject_id_'+subject_list[sub_id])
         ROI_dir      = opj(prfpy_dir,'ROIs')
-        lay_dir      = opj(prfpy_dir,'layerification')
+        if layer_space == 'func':
+            lay_dir      = opj(prfpy_dir,'layerification_func')
+        else:
+            lay_dir      = opj(prfpy_dir,'layerification')
 
         # image files
         meanFunc_fn  = opj(prfpy_dir,'meanFunc.nii')
@@ -241,9 +247,10 @@ for sub_id in range(0,len(subject_list)):
             sigma_ecc_5.append(s_val)
         
         # save
-        f = open(equivol_param_fn, 'wb')
-        pickle.dump([sigma_ecc_2,sigma_ecc_3,sigma_ecc_4,sigma_ecc_5], f)
-        f.close()
+        if layer_space != 'func':
+            f = open(equivol_param_fn, 'wb')
+            pickle.dump([sigma_ecc_2,sigma_ecc_3,sigma_ecc_4,sigma_ecc_5], f)
+            f.close()
 
         # write to df
         idx=df_equivol_per_ecc.loc[(df_equivol_per_ecc['sub id'] == subject_list[sub_id]) & 
@@ -300,9 +307,10 @@ for sub_id in range(0,len(subject_list)):
             sigma_ecc_5.append(s_val)
         
         # save
-        f = open(equidist_param_fn, 'wb')
-        pickle.dump([sigma_ecc_2,sigma_ecc_3,sigma_ecc_4,sigma_ecc_5], f)
-        f.close()
+        if layer_space != 'func':
+            f = open(equidist_param_fn, 'wb')
+            pickle.dump([sigma_ecc_2,sigma_ecc_3,sigma_ecc_4,sigma_ecc_5], f)
+            f.close()
 
         # write to df
         idx=df_equidist_per_ecc.loc[(df_equidist_per_ecc['sub id'] == subject_list[sub_id]) & 
@@ -360,6 +368,9 @@ for sub_id in range(0,len(subject_list)):
 
 
 # save df
-f = open(opj(prfpy_dir,'..','df_layers'), 'wb')
+if layer_space == 'func':
+    f = open(opj(prfpy_dir,'..','df_layers_func'), 'wb')
+else:
+    f = open(opj(prfpy_dir,'..','df_layers'), 'wb')
 pickle.dump([df_equivol_per_ecc,df_equidist_per_ecc,df_equivol_per_depth,df_equidist_per_depth], f)
 f.close()
