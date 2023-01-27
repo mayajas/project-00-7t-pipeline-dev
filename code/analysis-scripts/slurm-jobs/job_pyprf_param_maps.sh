@@ -59,7 +59,7 @@ INTERP_VOL2SURF=trilin
 #trilin
 #nearest
 
-PRFPY_DIR=/scratch/mayaaj90/project-00-7t-pipeline-dev/output/prfpy/$SUB_ID
+PRFPY_DIR=/scratch/mayaaj90/project-00-7t-pipeline-dev/output/prfpy_Iso2DGaussianModel/$SUB_ID
 REF_IMG=/scratch/mayaaj90/project-00-7t-pipeline-dev/output/anat/_subject_id_$SUB_ID/UNI_corrected.nii
 TRANSFORM_DIR=/scratch/mayaaj90/project-00-7t-pipeline-dev/manualcorr/coreg/_subject_id_$SUB_ID
 

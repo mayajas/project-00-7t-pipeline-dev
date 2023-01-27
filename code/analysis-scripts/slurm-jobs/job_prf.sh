@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --mem-per-cpu=1G
 #SBATCH --cpus-per-task=20
-#SBATCH --time=2:00:00
+#SBATCH --time=8:00:00
 #SBATCH --qos=prio
 
 declare -a combinations
@@ -55,4 +55,5 @@ unset _JAVA_OPTIONS
 
 # run the thing
 cd /home/mayaaj90/projects/project-00-7t-pipeline-dev/code/analysis-scripts/python
-ipython pRF-mapping.py $SUB_ID $HEM_ID > log_prf_sub${SUB_ID}_hem${HEM_ID}.txt
+#ipython pRF-mapping.py $SUB_ID $HEM_ID > log_prf_sub${SUB_ID}_hem${HEM_ID}.txt
+ipython pRF_mapping_DoG_Iso2DGaussian.py $SUB_ID $HEM_ID > log_prf_sub${SUB_ID}_hem${HEM_ID}.txt
