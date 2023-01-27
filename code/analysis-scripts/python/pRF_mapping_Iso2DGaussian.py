@@ -209,8 +209,7 @@ except IOError:
                     polar_grid=polar_grid,
                     size_grid=size_grid,
                     verbose=verbose,
-                    n_batches=n_procs,
-                    pos_prfs_only=pos_prfs_only)
+                    n_batches=n_procs)
     f = open(grid_fit_file, 'wb')
     pickle.dump(gf, f)
     f.close()
