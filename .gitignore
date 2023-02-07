@@ -26,3 +26,10 @@ code/analysis-scripts/slurm-jobs/log_p00_anat.txt
 code/analysis-scripts/python/.ipynb_checkpoints/pRF-mapping-checkpoint.ipynb
 code/analysis-scripts/python/pRF-mapping.ipynb
 code/notebooks/.ipynb_checkpoints/Untitled-checkpoint.ipynb
+code/analysis-scripts/matlab/ImportDataAndRun.m
+code/analysis-scripts/matlab/duplicateDataType.m
+code/analysis-scripts/python/pRF-mapping.py
+code/analysis-scripts/python/pRF_mapping_nestares.py
+code/notebooks/pRF-mapping.ipynb
+code/notebooks/Data_diagnostics_and_visualization_Nestares.ipynb
+code/notebooks/.ipynb_checkpoints/Data_diagnostics_and_visualization_Nestares-checkpoint.ipynb
