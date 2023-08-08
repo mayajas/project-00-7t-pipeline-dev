@@ -32,14 +32,27 @@
 # In[1]:
 
 
-# from IPython.display import Image
-# Image(filename='workflowgraph_advanced-skullstrip.png')
+import os
+os.chdir('/home/mayaaj90/projects/project-00-7t-pipeline-dev/code/notebooks/')
+
+
+# In[2]:
+
+
+os.listdir()
+
+
+# In[3]:
+
+
+from IPython.display import Image
+Image(filename='workflowgraph_advanced-skullstrip.png')
 
 
 # ### Set preferences
 # Whether or not to write the workflow viz graph, run pipeline, run specific branches of workflow...
 
-# In[2]:
+# In[4]:
 
 
 # whether or not to write workflow graph (svg)
@@ -52,7 +65,7 @@ run_pipeline = True
 run_nighres_branch = True        
 
 # green branch in workflow above (native FS brainmask)
-run_FSnative_branch = True           
+run_FSnative_branch = False           
 
 # blue branch in workflow above (external brainmask)
 run_FSexternal_branch = True 
@@ -60,7 +73,7 @@ run_FSexternal_branch = True
 # whether manual edits exist (for coregistration)
 manual_edits = True  
 wm_edits     = False
-gm_edits     = False
+gm_edits     = True
 
 # set wm and gm edits to false if manual edits have not been done
 if not manual_edits:
@@ -80,7 +93,7 @@ n_procs = int(os.getenv('OMP_NUM_THREADS'))   # number of cores to use
 # ### Set paths
 # All computer-dependent paths
 
-# In[3]:
+# In[5]:
 
 
 from os.path import join as opj
@@ -127,7 +140,7 @@ sinus_atlas = opj(software_dir,'sinus_atlas_MNI1mm.nii.gz')
 # ### Imports
 # Import required libraries, set paths
 
-# In[4]:
+# In[ ]:
 
 
 from nilearn import plotting
@@ -207,13 +220,15 @@ from nipype.interfaces.fsl import MultiImageMaths
 
 # ### Specify important variables
 
-# In[5]:
+# In[ ]:
 
 
 wf_name = 'wf_advanced_skullstrip'
 
-subject_list = ['sub-01','sub-02','sub-03']            # subject identifiers
-#subject_list = ['sub-04']                             # sub-04 doesn't have a T1map -> process separately
+sub_id       = int(sys.argv[1])
+
+subject_list = [['sub-01','sub-02','sub-03'],['sub-04']]   # subject identifiers
+subject_list = subject_list[sub_id]                        # sub-04 doesn't have a T1map -> process separately
 
 UNI_id       = 'UNI.nii'                               # name of T1 UNI image
 INV1_id      = 'INV1.nii'                              # name of INV1 image
@@ -222,14 +237,19 @@ T1_id        = 'T1.nii'                                # name of T1map image
 
 exists_T1    = True                                    # whether or not T1map exists (this depends on sub-id
                                                        # and is dealt with below)
+    
+manual_wm_id = 'wm.mgz'                                # name of white matter manual edits file in
+                                                       # manualcorr/sub-0*/brainmask_FSexternal directory
 
 manual_brainmask_id = 'brain.finalsurfs.mgz'           # name of manual edits file in 
                                                        # manualcorr/sub-0*/brainmask_FSexternal directory
+    
+nr_openmp    = n_procs/len(subject_list)
 
 
 # Deal with missing data (T1map for sub-04)
 
-# In[6]:
+# In[ ]:
 
 
 import functools
@@ -242,12 +262,15 @@ if functools.reduce(lambda x, y : x and y, map(lambda p, q: p == q,subject_list,
     wf_name = 'wf_advanced_skullstrip_sub-04'
 else:
     print('No worries, all data should be present')
+    nr_openmp    = n_procs/(2*len(subject_list))
+    
+print('Number of threads used for FS: '+str(nr_openmp))
 
 
 # ### Create workflow
 # About connecting nodes: https://nipype.readthedocs.io/en/0.11.0/users/joinnode_and_itersource.html
 
-# In[7]:
+# In[ ]:
 
 
 wf = Workflow(name=wf_name, base_dir=der_dir)
@@ -255,7 +278,7 @@ wf = Workflow(name=wf_name, base_dir=der_dir)
 
 # ### Subjects
 
-# In[8]:
+# In[ ]:
 
 
 subjects = Node(interface=IdentityInterface(fields=['subject_id']),name='subjects')
@@ -270,7 +293,7 @@ subjects.iterables = ('subject_id', subject_list)
 
 # #### UNI image files
 
-# In[9]:
+# In[ ]:
 
 
 if exists_T1:
@@ -302,7 +325,7 @@ else:
 #datasource.iterables = ('subject_id', subject_list)
 
 
-# In[10]:
+# In[ ]:
 
 
 wf.connect([(subjects, datasource,
@@ -312,26 +335,46 @@ wf.connect([(subjects, datasource,
 # #### Manual edits
 # (if they exist)
 
-# In[11]:
+# In[ ]:
 
 
-datasourceManualEdits = Node(DataGrabber(infields=['subject_id'], outfields=['manual_brainmask',
+datasourceManualEdits = Node(DataGrabber(infields=['subject_id'], outfields=['manual_wm',
+                                                                             'manual_brainmask',
                                                                              'subject_id']),
                  name='datasourceManualEdits')
 datasourceManualEdits.inputs.base_directory = data_dir
 datasourceManualEdits.inputs.sort_filelist = False
 datasourceManualEdits.inputs.template = '*'
-datasourceManualEdits.inputs.field_template = dict(manual_brainmask='manualcorr/freesurfer_externalbrainmask/_subject_id_%s/'+manual_brainmask_id
+datasourceManualEdits.inputs.field_template = dict(manual_wm='manualcorr/freesurfer_externalbrainmask/_subject_id_%s/'+manual_wm_id,
+                                                   manual_brainmask='manualcorr/freesurfer_externalbrainmask/_subject_id_%s/'+manual_brainmask_id
                                        )
-datasourceManualEdits.inputs.template_args = dict(manual_brainmask=[['subject_id']]
+datasourceManualEdits.inputs.template_args = dict(manual_wm=[['subject_id']],
+                                                  manual_brainmask=[['subject_id']]
                                        )
 
 
-# In[12]:
+# In[ ]:
 
 
-if manual_edits: 
+datasourceManualEditsGM = Node(DataGrabber(infields=['subject_id'], outfields=['manual_brainmask',
+                                                                             'subject_id']),
+                 name='datasourceManualEditsGM')
+datasourceManualEditsGM.inputs.base_directory = data_dir
+datasourceManualEditsGM.inputs.sort_filelist = False
+datasourceManualEditsGM.inputs.template = '*'
+datasourceManualEditsGM.inputs.field_template = dict(manual_brainmask='manualcorr/freesurfer_externalbrainmask/_subject_id_%s/'+manual_brainmask_id
+                                       )
+datasourceManualEditsGM.inputs.template_args = dict(manual_brainmask=[['subject_id']]
+                                       )
+
+
+# In[ ]:
+
+
+if manual_edits and wm_edits and gm_edits: 
     wf.connect([(subjects, datasourceManualEdits, [('subject_id', 'subject_id')])])
+elif manual_edits and not wm_edits and gm_edits:
+    wf.connect([(subjects, datasourceManualEditsGM, [('subject_id', 'subject_id')])])
 
 
 # ### Remove MP2Rage Background Noise
@@ -346,7 +389,7 @@ if manual_edits:
 
 # #### Define inputs
 
-# In[13]:
+# In[ ]:
 
 
 # output filename
@@ -360,7 +403,7 @@ multiplying_factor=7 #[5,6,7,8,9,10]
 # 
 # #### Create Python function interface
 
-# In[14]:
+# In[ ]:
 
 
 class DenoiseMP2RageInputSpec(BaseInterfaceInputSpec):
@@ -394,7 +437,7 @@ class DenoiseMP2Rage(BaseInterface):
         return {'filename_output': self.inputs.filename_output}
 
 
-# In[15]:
+# In[ ]:
 
 
 denoiseUNI = Node(DenoiseMP2Rage(filename_output=filename_output,
@@ -402,7 +445,7 @@ denoiseUNI = Node(DenoiseMP2Rage(filename_output=filename_output,
 #denoise.iterables = ('multiplying_factor', multiplying_factor)
 
 
-# In[16]:
+# In[ ]:
 
 
 wf.connect([(datasource, denoiseUNI,
@@ -430,52 +473,52 @@ wf.connect([(datasource, denoiseUNI,
 
 # #### Define inputs
 
-# In[17]:
+# In[ ]:
 
 
 biasCorrectDenoisedUNI = Node(N4BiasFieldCorrection(dimension=3), name="biasCorrectDenoisedUNI")
 
 
-# In[18]:
+# In[ ]:
 
 
 # connect to previous node for denoised UNI
 wf.connect([(denoiseUNI,biasCorrectDenoisedUNI,[('filename_output','input_image')])])
 
 
-# In[19]:
+# In[ ]:
 
 
 biasCorrectUNI = Node(N4BiasFieldCorrection(dimension=3), name="biasCorrectUNI")
 
 
-# In[20]:
+# In[ ]:
 
 
 # connect to previous node for denoised UNI
 wf.connect([(datasource,biasCorrectUNI,[('UNI','input_image')])])
 
 
-# In[21]:
+# In[ ]:
 
 
 biasCorrectINV2 = Node(N4BiasFieldCorrection(dimension=3), name="biasCorrectINV2")
 
 
-# In[22]:
+# In[ ]:
 
 
 # connect to input node for INV2
 wf.connect([(datasource,biasCorrectINV2,[('INV2','input_image')])])
 
 
-# In[23]:
+# In[ ]:
 
 
 biasCorrectT1 = Node(N4BiasFieldCorrection(dimension=3), name="biasCorrectT1")
 
 
-# In[24]:
+# In[ ]:
 
 
 # connect to input node for T1
@@ -485,7 +528,7 @@ if exists_T1:
 
 # ### Skull stripping of INV2
 
-# In[25]:
+# In[ ]:
 
 
 # BET output name
@@ -495,7 +538,7 @@ out_file = 'brainmask.nii'
 frac = 0.5 #[0.1,0.2,0.3,0.4,0.5]
 
 
-# In[26]:
+# In[ ]:
 
 
 # FSL BET - run on INV2 image
@@ -504,7 +547,7 @@ betINV2 = Node(BET(out_file = out_file, frac = frac,
 #betINV2.iterables = ('frac', frac)
 
 
-# In[27]:
+# In[ ]:
 
 
 wf.connect([(biasCorrectINV2,betINV2,[('output_image','in_file')])])
@@ -515,7 +558,7 @@ wf.connect([(biasCorrectINV2,betINV2,[('output_image','in_file')])])
 
 # #### Define inputs
 
-# In[28]:
+# In[ ]:
 
 
 # Set the 'clip level fraction' - a number between 0.1 and 0.9.
@@ -525,20 +568,20 @@ wf.connect([(biasCorrectINV2,betINV2,[('output_image','in_file')])])
 clfrac = 0.5 #[0.1,0.2]
 
 
-# In[29]:
+# In[ ]:
 
 
 automask = Node(Automask(outputtype='NIFTI', clfrac=clfrac),name='automask')
 #automask.iterables = ('clfrac', clfrac)
 
 
-# In[30]:
+# In[ ]:
 
 
 wf.connect([(betINV2,automask,[('out_file','in_file')])])
 
 
-# In[31]:
+# In[ ]:
 
 
 Automask.help()
@@ -549,7 +592,7 @@ Automask.help()
 
 # #### Define inputs
 
-# In[32]:
+# In[ ]:
 
 
 # save output files
@@ -562,7 +605,7 @@ t1w_masked = 'UNI_corrected_strip-t1w.nii'
 t1map_masked = 'T1_corrected_strip-t1map.nii'
 
 
-# In[33]:
+# In[ ]:
 
 
 class MP2RageSkullStripInputSpec(BaseInterfaceInputSpec):
@@ -612,7 +655,7 @@ class MP2RageSkullStrip(BaseInterface):
         return outputs
 
 
-# In[34]:
+# In[ ]:
 
 
 class MP2RageSkullStripNoT1InputSpec(BaseInterfaceInputSpec):
@@ -655,7 +698,7 @@ class MP2RageSkullStripNoT1(BaseInterface):
         return outputs
 
 
-# In[35]:
+# In[ ]:
 
 
 if exists_T1:
@@ -668,7 +711,7 @@ else:
     display('T1 does not exist')
 
 
-# In[36]:
+# In[ ]:
 
 
 wf.connect([(biasCorrectUNI,skullstrip,[('output_image','t1_weighted')])])
@@ -680,7 +723,7 @@ if exists_T1:
 # ### MP2RAGE dura estimation
 # Nighres: https://nighres.readthedocs.io/en/latest/brain/mp2rage_dura_estimation.html
 
-# In[37]:
+# In[ ]:
 
 
 # Maximum distance within the mask for dura (default is 5.0 mm)
@@ -689,7 +732,7 @@ background_distance = 5.0
 result = 'INV2_corrected_dura-proba.nii'
 
 
-# In[38]:
+# In[ ]:
 
 
 class MP2RageDuraEstimationInputSpec(BaseInterfaceInputSpec):
@@ -728,20 +771,20 @@ class MP2RageDuraEstimation(BaseInterface):
         return outputs
 
 
-# In[39]:
+# In[ ]:
 
 
 #MP2RageDuraEstimation.help()
 
 
-# In[40]:
+# In[ ]:
 
 
 duraEstimation = Node(MP2RageDuraEstimation(save_data=True, background_distance=background_distance,
                                            result=result), name="duraEstimation")
 
 
-# In[41]:
+# In[ ]:
 
 
 wf.connect([(biasCorrectINV2,duraEstimation,[('output_image','second_inversion')])])
@@ -753,7 +796,7 @@ wf.connect([(skullstrip,duraEstimation,[('brain_mask','skullstrip_mask')])])
 # Binarized dura mask subtracted from skull-stripped mask.
 # Intersection of above and AFNI background noise removal used to create dura-stripped image.
 
-# In[42]:
+# In[ ]:
 
 
 thresh = 0.8 # threshold to apply to probabilistic dura map
@@ -761,45 +804,45 @@ thresh = 0.8 # threshold to apply to probabilistic dura map
 dilate = 2 # voxels
 
 
-# In[43]:
+# In[ ]:
 
 
 # binarize dura probabilistic map
 binarizeDuraMap = Node(Binarize(min=thresh, dilate=dilate),name='binarizeDuraMap')
 
 
-# In[44]:
+# In[ ]:
 
 
 wf.connect([(duraEstimation,binarizeDuraMap,[('result','in_file')])])
 
 
-# In[45]:
+# In[ ]:
 
 
 duraStrip = Node(BinaryMaths(operation = "sub", output_datatype = 'float'),name="duraStrip")
 
 
-# In[46]:
+# In[ ]:
 
 
 wf.connect([(skullstrip,duraStrip,[('brain_mask','in_file')])])
 wf.connect([(binarizeDuraMap,duraStrip,[('binary_file','operand_file')])])
 
 
-# In[47]:
+# In[ ]:
 
 
 #niftyseg.BinaryMaths.help()
 
 
-# In[48]:
+# In[ ]:
 
 
 brainMask = Node(BinaryMaths(operation = "mul", output_datatype = 'float'),name="brainMask")
 
 
-# In[49]:
+# In[ ]:
 
 
 wf.connect([(duraStrip,brainMask,[('out_file','in_file')])])
@@ -808,13 +851,13 @@ wf.connect([(automask,brainMask,[('out_file','operand_file')])])
 
 # Apply binary mask to bias corrected T1UNI
 
-# In[50]:
+# In[ ]:
 
 
 maskedUNI = Node(ApplyMask(),name='maskedUNI')
 
 
-# In[51]:
+# In[ ]:
 
 
 #wf.connect([(brainMask,maskedUNI,[('out_file','mask_file')])])
@@ -822,14 +865,14 @@ wf.connect([(automask,maskedUNI,[('out_file','mask_file')])])
 wf.connect([(biasCorrectDenoisedUNI,maskedUNI,[('output_image','in_file')])])
 
 
-# In[52]:
+# In[ ]:
 
 
 # apply binary mask to bias corrected T1map
 maskedT1 = Node(ApplyMask(),name='maskedT1')
 
 
-# In[53]:
+# In[ ]:
 
 
 #wf.connect([(brainMask,maskedT1,[('out_file','mask_file')])])
@@ -839,7 +882,7 @@ maskedT1 = Node(ApplyMask(),name='maskedT1')
 # ### ANTs brain extraction of UNI
 # 
 
-# In[54]:
+# In[ ]:
 
 
 use_floatingpoint_precision = 1
@@ -848,7 +891,7 @@ brain_template = bet_ants_template
 extraction_registration_mask = bet_ants_registration_mask
 
 
-# In[55]:
+# In[ ]:
 
 
 betUNI = Node(BrainExtraction(dimension=3,
@@ -858,13 +901,13 @@ betUNI = Node(BrainExtraction(dimension=3,
                                  extraction_registration_mask=extraction_registration_mask),name="betUNI")
 
 
-# In[56]:
+# In[ ]:
 
 
 #wf.connect([(maskedUNI,betUNI,[('out_file','anatomical_image')])])
 
 
-# In[57]:
+# In[ ]:
 
 
 #BrainExtraction.help()
@@ -917,16 +960,16 @@ betUNI = Node(BrainExtraction(dimension=3,
 
 # ### Alternative 1: Freesurfer-estimated brain mask
 
-# In[58]:
+# In[ ]:
 
 
 # autorecon1
-autorecon1FSbrainmask = Node(ReconAll(directive = "autorecon1", hires = True, parallel = True),
+autorecon1FSbrainmask = Node(ReconAll(directive = "autorecon1", hires = True),
                   name="autorecon1FSbrainmask")
 autorecon1FSbrainmask._interface._can_resume = False
 
 
-# In[59]:
+# In[ ]:
 
 
 if run_FSnative_branch:
@@ -934,10 +977,10 @@ if run_FSnative_branch:
     wf.connect([(biasCorrectDenoisedUNI, autorecon1FSbrainmask,[('output_image','T1_files')])])
 
 
-# In[60]:
+# In[ ]:
 
 
-autorecon_resumeFSbrainmask = Node(ReconAll(hires = True, parallel = True), name="autorecon_resumeFSbrainmask")
+autorecon_resumeFSbrainmask = Node(ReconAll(hires = True), name="autorecon_resumeFSbrainmask")
 autorecon_resumeFSbrainmask.inputs.args = "-no-isrunning"
 
 if run_FSnative_branch:
@@ -947,16 +990,16 @@ if run_FSnative_branch:
 
 # ### Alternative 2: external brain mask
 
-# In[61]:
+# In[ ]:
 
 
 # autorecon1
-autorecon1 = Node(ReconAll(directive = "autorecon1", args="-noskullstrip", hires = True, parallel = True),
+autorecon1 = Node(ReconAll(directive = "autorecon1", args="-noskullstrip", hires = True),
                   name="autorecon1")
 autorecon1._interface._can_resume = False
 
 
-# In[62]:
+# In[ ]:
 
 
 if run_FSexternal_branch:
@@ -964,7 +1007,7 @@ if run_FSexternal_branch:
     wf.connect([(maskedUNI, autorecon1,[('out_file','T1_files')])])
 
 
-# In[63]:
+# In[ ]:
 
 
 # Performs recon-all on voulmes that are already skull stripped. 
@@ -983,7 +1026,7 @@ def link_masks(subjects_dir, subject_id):
         return subjects_dir, subject_id
 
 
-# In[64]:
+# In[ ]:
 
 
 masks = Node(niu.Function(input_names=['subjects_dir', 'subject_id'],
@@ -991,7 +1034,7 @@ masks = Node(niu.Function(input_names=['subjects_dir', 'subject_id'],
                                  function=link_masks), name="link_masks")
 
 
-# In[65]:
+# In[ ]:
 
 
 if run_FSexternal_branch:
@@ -1000,10 +1043,10 @@ if run_FSexternal_branch:
    
 
 
-# In[66]:
+# In[ ]:
 
 
-autorecon_resume = Node(ReconAll(hires = True, parallel = True), name="autorecon_resume")
+autorecon_resume = Node(ReconAll(hires = True), name="autorecon_resume")
 autorecon_resume.inputs.args = "-no-isrunning"
 
 if run_FSexternal_branch:
@@ -1011,7 +1054,7 @@ if run_FSexternal_branch:
     wf.connect([(masks,autorecon_resume,[('subject_id','subject_id')])])
 
 
-# In[67]:
+# In[ ]:
 
 
 ReconAll.help()
@@ -1025,7 +1068,7 @@ ReconAll.help()
 # ##### Copy entire FS directory to new location
 # This is done so that the original FS output is not lost and any manual edits and surface regeneration are made in the copied directory
 
-# In[68]:
+# In[ ]:
 
 
 def copy_FSdir(subjects_dir,subject_id,working_dir):
@@ -1055,7 +1098,7 @@ def copy_FSdir(subjects_dir,subject_id,working_dir):
     return subjects_dir, subject_id
 
 
-# In[69]:
+# In[ ]:
 
 
 copyFSdir = Node(Function(input_names = ['subjects_dir','subject_id','working_dir'],
@@ -1065,7 +1108,7 @@ copyFSdir = Node(Function(input_names = ['subjects_dir','subject_id','working_di
 copyFSdir.inputs.working_dir = opj(der_dir,wf_name)
 
 
-# In[70]:
+# In[ ]:
 
 
 if run_FSexternal_branch:
@@ -1073,12 +1116,12 @@ if run_FSexternal_branch:
     wf.connect([(autorecon_resume,copyFSdir,[('subject_id','subject_id')])])
 
 
-# ##### Copy manually corrected brain mask into copied FS directory
+# ##### Copy manually corrected brain mask and/or white matter into copied FS directory
 
-# In[71]:
+# In[ ]:
 
 
-def copy_manual_brainmask(subjects_dir,subject_id,working_dir,manual_brainmask):
+def copy_manual_correction(subjects_dir,subject_id,working_dir,manual_corr):
     from os.path import join as opj
     import shutil
     import os
@@ -1086,52 +1129,82 @@ def copy_manual_brainmask(subjects_dir,subject_id,working_dir,manual_brainmask):
     mri_dir = opj(working_dir,'_subject_id_'+subject_id,'autorecon_pial',subject_id,'mri')
     
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
-    print(manual_brainmask)
+    print(manual_corr)
     print(mri_dir)
     print(subjects_dir)
     print(subject_id)
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
     
     # copy manually-edited brainmask file
-    shutil.copy(manual_brainmask, mri_dir)
+    shutil.copy(manual_corr, mri_dir)
 
     return subjects_dir, subject_id
 
 
-# In[72]:
+# In[ ]:
 
 
-copyManualBrainmask = Node(Function(input_names = ['subjects_dir','subject_id','working_dir','manual_brainmask'],
+copyManualBrainmask = Node(Function(input_names = ['subjects_dir','subject_id','working_dir','manual_corr'],
                                output_names=['subjects_dir','subject_id'],
-                               function=copy_manual_brainmask),
+                               function=copy_manual_correction),
                       name='copyManualBrainmask')
 copyManualBrainmask.inputs.working_dir = opj(der_dir,wf_name)
 
 
-# In[73]:
+# In[ ]:
 
 
-if manual_edits:
+copyManualWM = Node(Function(input_names = ['subjects_dir','subject_id','working_dir','manual_corr'],
+                               output_names=['subjects_dir','subject_id'],
+                               function=copy_manual_correction),
+                      name='copyManualWM')
+copyManualWM.inputs.working_dir = opj(der_dir,wf_name)
+
+
+# In[ ]:
+
+
+if manual_edits and gm_edits:
     wf.connect([(copyFSdir,copyManualBrainmask,[('subjects_dir','subjects_dir')])])
     wf.connect([(copyFSdir,copyManualBrainmask,[('subject_id','subject_id')])])
-    wf.connect([(datasourceManualEdits,copyManualBrainmask,[('manual_brainmask','manual_brainmask')])])
+    wf.connect([(datasourceManualEditsGM,copyManualBrainmask,[('manual_brainmask','manual_corr')])])
+
+
+# In[ ]:
+
+
+if manual_edits and wm_edits:
+    wf.connect([(copyFSdir,copyManualWM,[('subjects_dir','subjects_dir')])])
+    wf.connect([(copyFSdir,copyManualWM,[('subject_id','subject_id')])])
+    wf.connect([(datasourceManualEditsGM,copyManualWM,[('manual_wm','manual_corr')])])
 
 
 # ##### Regenerate surfaces
 
-# In[74]:
+# In[ ]:
 
 
-autorecon_regenerate_surfaces = Node(ReconAll(directive = "autorecon-pial", hires = True, parallel = True), name="autorecon_regenerate_surfaces")
-autorecon_regenerate_surfaces.inputs.args = "-no-isrunning"
+if run_FSexternal_branch and regenerate_surfaces and manual_edits:
+    autorecon_regenerate_surfaces = Node(ReconAll(hires = True), name="autorecon_regenerate_surfaces")
+    autorecon_regenerate_surfaces.inputs.args = "-no-isrunning"
 
 
-# In[75]:
+# In[ ]:
 
 
-if run_FSexternal_branch and regenerate_surfaces:
+if run_FSexternal_branch and regenerate_surfaces and manual_edits:
     wf.connect([(copyManualBrainmask,autorecon_regenerate_surfaces,[('subjects_dir','subjects_dir')])])
     wf.connect([(copyManualBrainmask,autorecon_regenerate_surfaces,[('subject_id','subject_id')])])
+    if gm_edits and not wm_edits:
+        autorecon_regenerate_surfaces.inputs.directive = "autorecon-pial"
+    elif gm_edits and wm_edits:
+        autorecon_regenerate_surfaces.inputs.directive = "autorecon2-wm"
+
+
+# In[ ]:
+
+
+ReconAll.help()
 
 
 # #### Create binary GM/WM masks on FS outputs
@@ -1140,7 +1213,7 @@ if run_FSexternal_branch and regenerate_surfaces:
 # 
 # mri_binarize --i aparc+aseg.mgz --gm --o gm.mask.mgz
 
-# In[76]:
+# In[ ]:
 
 
 # first get aparc_aseg.mgz file from FS output list
@@ -1152,7 +1225,7 @@ index = 0
 getAparcAseg = Node(Select(index = index), name = 'getAparcAseg')
 
 
-# In[77]:
+# In[ ]:
 
 
 # if run_FSexternal_branch and not regenerate_surfaces:
@@ -1165,13 +1238,13 @@ getAparcAseg = Node(Select(index = index), name = 'getAparcAseg')
 # 
 # Rename
 
-# In[78]:
+# In[ ]:
 
 
 renameWM = Node(Rename(format_string='wm.mask.mgz'), name='renameWM')
 
 
-# In[79]:
+# In[ ]:
 
 
 # if run_FSexternal_branch:
@@ -1180,7 +1253,7 @@ renameWM = Node(Rename(format_string='wm.mask.mgz'), name='renameWM')
 
 # Binarize
 
-# In[80]:
+# In[ ]:
 
 
 wm = True                       # (a boolean)
@@ -1192,14 +1265,14 @@ out_type = 'nii'
 args = '--o wm.mask.nii'
 
 
-# In[81]:
+# In[ ]:
 
 
 binarizeFSWM = Node(Binarize(wm = wm, wm_ven_csf=wm_ven_csf,
                              out_type=out_type, args=args), name = 'binarizeFSWM')
 
 
-# In[82]:
+# In[ ]:
 
 
 # if run_FSexternal_branch:
@@ -1209,13 +1282,13 @@ binarizeFSWM = Node(Binarize(wm = wm, wm_ven_csf=wm_ven_csf,
 # ##### Gray matter
 # Rename
 
-# In[83]:
+# In[ ]:
 
 
 renameGM = Node(Rename(format_string='gm.mask.mgz'), name='renameGM')
 
 
-# In[84]:
+# In[ ]:
 
 
 # if run_FS_external_branch:
@@ -1224,28 +1297,28 @@ renameGM = Node(Rename(format_string='gm.mask.mgz'), name='renameGM')
 
 # Binarize
 
-# In[85]:
+# In[ ]:
 
 
 out_type = 'nii'
 args = '--gm --o gm.mask.nii'
 
 
-# In[86]:
+# In[ ]:
 
 
 binarizeFSGM = Node(Binarize(args=args, out_type=out_type), 
                     name = 'binarizeFSGM')
 
 
-# In[87]:
+# In[ ]:
 
 
 # if run_FSexternal_branch:
 #     wf.connect([(renameGM,binarizeFSGM,[('out_file','in_file')])])
 
 
-# In[88]:
+# In[ ]:
 
 
 #Binarize.help()
@@ -1255,7 +1328,7 @@ binarizeFSGM = Node(Binarize(args=args, out_type=out_type),
 # (Nighres) Estimates brain structures from an atlas for MRI data using a Multiple Object Geometric Deformable Model (MGDM). 
 # https://nighres.readthedocs.io/en/latest/brain/mgdm_segmentation.html?highlight=nighres.brain.mgdm_segmentation
 
-# In[89]:
+# In[ ]:
 
 
 # static inputs
@@ -1277,7 +1350,7 @@ memberships = file_name+'_mgdm-mems'+'.nii.gz'
 distance = file_name+'_mgdm-dist'+'.nii.gz'
 
 
-# In[90]:
+# In[ ]:
 
 
 class MGDMSegmentationInputSpec(BaseInterfaceInputSpec):
@@ -1329,7 +1402,7 @@ class MGDMSegmentation(BaseInterface):
         return outputs
 
 
-# In[91]:
+# In[ ]:
 
 
 mgdmSegment = Node(MGDMSegmentation(save_data = save_data, file_name = file_name,
@@ -1340,7 +1413,7 @@ mgdmSegment = Node(MGDMSegmentation(save_data = save_data, file_name = file_name
                                    distance=distance), name="mgdmSegment")
 
 
-# In[92]:
+# In[ ]:
 
 
 if run_nighres_branch:
@@ -1356,7 +1429,7 @@ if run_nighres_branch:
 # 
 # https://nighres.readthedocs.io/en/latest/brain/extract_brain_region.html
 
-# In[93]:
+# In[ ]:
 
 
 # static inputs
@@ -1379,7 +1452,7 @@ inside_lvl = file_name+'_xlvl-crwm'+'.nii.gz' # Levelset surface of the (WM) ins
 background_lvl = file_name+'_xlvl-crbg'+'.nii.gz' # Levelset surface of the (CSF) region background 
 
 
-# In[94]:
+# In[ ]:
 
 
 class ExtractBrainRegionInputSpec(BaseInterfaceInputSpec):
@@ -1451,7 +1524,7 @@ class ExtractBrainRegion(BaseInterface):
         return outputs
 
 
-# In[95]:
+# In[ ]:
 
 
 extractBrainRegion = Node(ExtractBrainRegion(save_data = save_data, file_name = file_name,
@@ -1466,7 +1539,7 @@ extractBrainRegion = Node(ExtractBrainRegion(save_data = save_data, file_name = 
 #extractBrainRegion.iterables = ('extracted_region', extracted_region)
 
 
-# In[96]:
+# In[ ]:
 
 
 if run_nighres_branch:
@@ -1484,7 +1557,7 @@ if run_nighres_branch:
 # 
 # https://nighres.readthedocs.io/en/latest/cortex/cruise_cortex_extraction.html
 
-# In[97]:
+# In[ ]:
 
 
 # static inputs
@@ -1502,7 +1575,7 @@ pgm = file_name+'_cruise-pgm'+'.nii.gz' # Optimized GM probability, including CS
 pcsf = file_name+'_cruise-pwm'+'.nii.gz' # Optimized CSF probability, including sulcal ridges and vessel/dura correction
 
 
-# In[98]:
+# In[ ]:
 
 
 class CruiseCortexExtractionInputSpec(BaseInterfaceInputSpec):
@@ -1567,7 +1640,7 @@ class CruiseCortexExtraction(BaseInterface):
         return outputs
 
 
-# In[99]:
+# In[ ]:
 
 
 cruise = Node(CruiseCortexExtraction(save_data = save_data, file_name = file_name,
@@ -1577,7 +1650,7 @@ cruise = Node(CruiseCortexExtraction(save_data = save_data, file_name = file_nam
                                    ), name="cruise")
 
 
-# In[100]:
+# In[ ]:
 
 
 if run_nighres_branch:
@@ -1597,7 +1670,7 @@ if run_nighres_branch:
 # 
 # https://nighres.readthedocs.io/en/latest/surface/levelset_to_mesh.html?highlight=nighres.surface.levelset_to_mesh
 
-# In[101]:
+# In[ ]:
 
 
 # static inputs
@@ -1608,7 +1681,7 @@ save_data = True
 result = file_name+'_l2m-mesh'+'.vtk' # Surface mesh dictionary of “points” and “faces”
 
 
-# In[102]:
+# In[ ]:
 
 
 class LevelsetToMeshInputSpec(BaseInterfaceInputSpec):
@@ -1645,7 +1718,7 @@ class LevelsetToMesh(BaseInterface):
         return outputs
 
 
-# In[103]:
+# In[ ]:
 
 
 levelsetToMesh = Node(LevelsetToMesh(save_data = save_data, file_name = file_name,
@@ -1653,7 +1726,7 @@ levelsetToMesh = Node(LevelsetToMesh(save_data = save_data, file_name = file_nam
                                    ), name="levelsetToMesh")
 
 
-# In[104]:
+# In[ ]:
 
 
 if run_nighres_branch:
@@ -1666,7 +1739,7 @@ if run_nighres_branch:
 # 
 # https://nighres.readthedocs.io/en/latest/surface/surface_inflation.html?highlight=nighres.surface.surface_inflation
 
-# In[105]:
+# In[ ]:
 
 
 # static inputs
@@ -1677,7 +1750,7 @@ save_data = True
 result = file_name+'_l2m-mesh'+'.vtk' # Surface mesh dictionary of “points” and “faces”
 
 
-# In[106]:
+# In[ ]:
 
 
 class SurfaceInflationInputSpec(BaseInterfaceInputSpec):
@@ -1713,7 +1786,7 @@ class SurfaceInflation(BaseInterface):
         return outputs
 
 
-# In[107]:
+# In[ ]:
 
 
 surfaceInflation = Node(SurfaceInflation(save_data = save_data, file_name = file_name,
@@ -1721,7 +1794,7 @@ surfaceInflation = Node(SurfaceInflation(save_data = save_data, file_name = file
                                    ), name="surfaceInflation")
 
 
-# In[108]:
+# In[ ]:
 
 
 if run_nighres_branch:
@@ -1736,7 +1809,7 @@ if run_nighres_branch:
 # 
 # https://nighres.readthedocs.io/en/latest/laminar/volumetric_layering.html?highlight=nighres.laminar.volumetric_layering
 
-# In[109]:
+# In[ ]:
 
 
 # static inputs
@@ -1750,7 +1823,7 @@ layers = file_name + '_layering-layers' + 'nii.gz' # Discrete layers from 1 (bor
 boundaries = file_name + '_layering-boundaries' + 'nii.gz' # Levelset representations of boundaries between all layers in 4D 
 
 
-# In[110]:
+# In[ ]:
 
 
 class VolumetricLayeringInputSpec(BaseInterfaceInputSpec):
@@ -1797,7 +1870,7 @@ class VolumetricLayering(BaseInterface):
         return outputs
 
 
-# In[111]:
+# In[ ]:
 
 
 volumetricLayering = Node(VolumetricLayering(save_data = save_data, file_name = file_name,
@@ -1806,7 +1879,7 @@ volumetricLayering = Node(VolumetricLayering(save_data = save_data, file_name = 
                                    ), name="volumetricLayering")
 
 
-# In[112]:
+# In[ ]:
 
 
 if run_nighres_branch:
@@ -1817,78 +1890,89 @@ if run_nighres_branch:
 # ### Copy brain.finalsurfs.mgz to be used for FS manual edits
 # 
 
-# In[113]:
+# In[ ]:
 
 
-def copy_brain_finalsurfs_mgz(subjects_dir,subject_id,working_dir,manual_brainmask_id,node_name):
+def copy_mgz(subjects_dir,subject_id,working_dir,manual_corr_id,node_name):
     from os.path import join as opj
     import shutil
     import os
     
     mri_dir = opj(subjects_dir,subject_id,'mri')
-    finalsurfs_mgz = opj(mri_dir,manual_brainmask_id)
+    mgz_file = opj(mri_dir,manual_corr_id)
     copy_dir = opj(working_dir,'_subject_id_'+subject_id,node_name)
-    out_file = opj(copy_dir,manual_brainmask_id)
+    out_file = opj(copy_dir,manual_corr_id)
     
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
-    print(finalsurfs_mgz)
+    print(mgz_file)
     print(out_file)
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
     
     # copy manually-edited brainmask file
-    shutil.copy(finalsurfs_mgz, out_file)
+    shutil.copy(mgz_file, out_file)
 
     return subjects_dir, subject_id, out_file
 
 
-# In[114]:
+# In[ ]:
 
 
 # FS native brain mask (green module)
 if run_FSnative_branch:
+    
+    # copy wm.mgz file
+    getWMMgz_FSNative = Node(Function(input_names = ['subjects_dir','subject_id','working_dir',
+                                                                  'manual_corr_id','node_name'],
+                                   output_names=['subjects_dir','subject_id','out_file'],
+                                   function=copy_mgz),
+                          name='getWMMgz_FSNative')
+    getWMMgz_FSNative.inputs.working_dir = opj(der_dir,wf_name)
+    getWMMgz_FSNative.inputs.node_name = 'getBrainFinalsurfsMgz_FSNative'
+    getWMMgz_FSNative.inputs.manual_corr_id = manual_brainmask_id
+    wf.connect([(autorecon_resumeFSbrainmask,getWMMgz_FSNative,[('subjects_dir','subjects_dir')])])
+    wf.connect([(autorecon_resumeFSbrainmask,getWMMgz_FSNative,[('subject_id','subject_id')])])
+    
     # copy brain.finalsurfs.mgz file
     getBrainFinalsurfsMgz_FSNative = Node(Function(input_names = ['subjects_dir','subject_id','working_dir',
-                                                                  'manual_brainmask_id','node_name'],
+                                                                  'manual_corr_id','node_name'],
                                    output_names=['subjects_dir','subject_id','out_file'],
-                                   function=copy_brain_finalsurfs_mgz),
+                                   function=copy_mgz),
                           name='getBrainFinalsurfsMgz_FSNative')
     getBrainFinalsurfsMgz_FSNative.inputs.working_dir = opj(der_dir,wf_name)
     getBrainFinalsurfsMgz_FSNative.inputs.node_name = 'getBrainFinalsurfsMgz_FSNative'
-    getBrainFinalsurfsMgz_FSNative.inputs.manual_brainmask_id = manual_brainmask_id
-    wf.connect([(autorecon1FSbrainmask,getBrainFinalsurfsMgz_FSNative,[('subjects_dir','subjects_dir')])])
-    wf.connect([(autorecon1FSbrainmask,getBrainFinalsurfsMgz_FSNative,[('subject_id','subject_id')])])
+    getBrainFinalsurfsMgz_FSNative.inputs.manual_corr_id = manual_brainmask_id
+    wf.connect([(autorecon_resumeFSbrainmask,getBrainFinalsurfsMgz_FSNative,[('subjects_dir','subjects_dir')])])
+    wf.connect([(autorecon_resumeFSbrainmask,getBrainFinalsurfsMgz_FSNative,[('subject_id','subject_id')])])
     
     # binarize mask
     binarizeFSNativeMask = Node(Binarize(min=1), name='binarizeFSNativeMask')
-    wf.connect([(autorecon1FSbrainmask,binarizeFSNativeMask,[('brainmask','in_file')])])
-
-#     # convert to nii
-#     convertFSNativeMaskToNiiMask = Node(MRIConvert(out_type='nii'), name='convertFSNativeMaskToNiiMask')
-#     wf.connect([(binarizeFSNativeMask,convertFSNativeMaskToNiiMask,[('binary_file','in_file')])])
-
-#     convertFSNativeMaskToNii = Node(MRIConvert(out_type='nii'), name='convertFSNativeMaskToNii')
-#     wf.connect([(autorecon1FSbrainmask,convertFSNativeMaskToNii,[('brainmask','in_file')])])
-
-#     # rename
-#     renameBrainmaskFSNativeMask = Node(Rename(format_string='brainmask_FSnative_mask',keep_ext=True), name='renameBrainmaskFSNativeMask')
-#     wf.connect([(convertFSNativeMaskToNiiMask, renameBrainmaskFSNativeMask,[('out_file', 'in_file')])])        
-
-#     renameBrainmaskFSNative = Node(Rename(format_string='brainmask_FSnative',keep_ext=True), name='renameBrainmaskFSNative')
-#     wf.connect([(convertFSNativeMaskToNii, renameBrainmaskFSNative,[('out_file', 'in_file')])])  
+    wf.connect([(autorecon_resumeFSbrainmask,binarizeFSNativeMask,[('brainmask','in_file')])]) 
 
 # FS external brain mask (blue module)
 if run_FSexternal_branch:
+    # copy wm.mgz file
+    getWMMgz_FSExternal = Node(Function(input_names = ['subjects_dir','subject_id','working_dir',
+                                                                  'manual_corr_id','node_name'],
+                                   output_names=['subjects_dir','subject_id','out_file'],
+                                   function=copy_mgz),
+                          name='getWMMgz_FSExternal')
+    getWMMgz_FSExternal.inputs.working_dir = opj(der_dir,wf_name)
+    getWMMgz_FSExternal.inputs.node_name = 'getBrainFinalsurfsMgz_FSExternal'
+    getWMMgz_FSExternal.inputs.manual_corr_id = manual_wm_id
+    wf.connect([(autorecon_resume,getWMMgz_FSExternal,[('subjects_dir','subjects_dir')])])
+    wf.connect([(autorecon_resume,getWMMgz_FSExternal,[('subject_id','subject_id')])])
+    
     # copy brain.finalsurfs.mgz file
     getBrainFinalsurfsMgz_FSExternal = Node(Function(input_names = ['subjects_dir','subject_id','working_dir',
-                                                                  'manual_brainmask_id','node_name'],
+                                                                  'manual_corr_id','node_name'],
                                    output_names=['subjects_dir','subject_id','out_file'],
-                                   function=copy_brain_finalsurfs_mgz),
+                                   function=copy_mgz),
                           name='getBrainFinalsurfsMgz_FSExternal')
     getBrainFinalsurfsMgz_FSExternal.inputs.working_dir = opj(der_dir,wf_name)
     getBrainFinalsurfsMgz_FSExternal.inputs.node_name = 'getBrainFinalsurfsMgz_FSExternal'
-    getBrainFinalsurfsMgz_FSExternal.inputs.manual_brainmask_id = manual_brainmask_id
-    wf.connect([(autorecon1,getBrainFinalsurfsMgz_FSExternal,[('subjects_dir','subjects_dir')])])
-    wf.connect([(autorecon1,getBrainFinalsurfsMgz_FSExternal,[('subject_id','subject_id')])])
+    getBrainFinalsurfsMgz_FSExternal.inputs.manual_corr_id = manual_brainmask_id
+    wf.connect([(autorecon_resume,getBrainFinalsurfsMgz_FSExternal,[('subjects_dir','subjects_dir')])])
+    wf.connect([(autorecon_resume,getBrainFinalsurfsMgz_FSExternal,[('subject_id','subject_id')])])
     
 if regenerate_surfaces:
     binarizeRegeneratedBrainmask = Node(Binarize(min=1), name='binarizeRegeneratedBrainmask')
@@ -1904,13 +1988,13 @@ if regenerate_surfaces:
 # ## Sum and threshold brain masks (to be used for wisdom-of-the-neuroimaging-crowd approach)
 # 
 
-# In[115]:
+# In[ ]:
 
 
 listBrainmasks = Node(utilMerge(),name='listBrainmasks')
 
 
-# In[116]:
+# In[ ]:
 
 
 # dimension = 't'
@@ -1918,7 +2002,7 @@ listBrainmasks = Node(utilMerge(),name='listBrainmasks')
 # merged_file = 'merged_brainmasks.nii'
 
 
-# In[117]:
+# In[ ]:
 
 
 # mergeBrainmasks = Node(fslMerge(dimension=dimension, output_type=output_type, merged_file=merged_file),
@@ -1926,7 +2010,7 @@ listBrainmasks = Node(utilMerge(),name='listBrainmasks')
 sumBrainMasks = Node(MultiImageMaths(),name='sumBrainmasks')
 
 
-# In[118]:
+# In[ ]:
 
 
 # if run_nighres_branch and run_FSnative_branch and run_FSexternal_branch and regenerate_surfaces:
@@ -1947,7 +2031,7 @@ sumBrainMasks = Node(MultiImageMaths(),name='sumBrainmasks')
 
 # ##### Copy final FS directory to new location
 
-# In[119]:
+# In[ ]:
 
 
 def copy_FSdir4PRF(subjects_dir,subject_id,pRF_dir):
@@ -1980,25 +2064,26 @@ def copy_FSdir4PRF(subjects_dir,subject_id,pRF_dir):
     return subjects_dir, subject_id
 
 
-# In[120]:
+# In[ ]:
 
 
-copyFSdir4PRF = Node(Function(input_names = ['subjects_dir','subject_id','pRF_dir'],
-                               output_names=['subjects_dir','subject_id'],
-                               function=copy_FSdir4PRF),
-                      name='copyFSdir4PRF')
-copyFSdir4PRF.inputs.pRF_dir = pRF_dir
+# if run_FSexternal_branch and regenerate_surfaces:
+#     copyFSdir4PRF = Node(Function(input_names = ['subjects_dir','subject_id','pRF_dir'],
+#                                    output_names=['subjects_dir','subject_id'],
+#                                    function=copy_FSdir4PRF),
+#                           name='copyFSdir4PRF')
+#     copyFSdir4PRF.inputs.pRF_dir = pRF_dir
 
 
-# In[121]:
+# In[ ]:
 
 
-if run_FSexternal_branch and regenerate_surfaces:
-    wf.connect([(autorecon_regenerate_surfaces,copyFSdir4PRF,[('subjects_dir','subjects_dir')])])
-    wf.connect([(autorecon_regenerate_surfaces,copyFSdir4PRF,[('subject_id','subject_id')])])
+# if run_FSexternal_branch and regenerate_surfaces and manual_edits:
+#     wf.connect([(autorecon_regenerate_surfaces,copyFSdir4PRF,[('subjects_dir','subjects_dir')])])
+#     wf.connect([(autorecon_regenerate_surfaces,copyFSdir4PRF,[('subject_id','subject_id')])])
 
 
-# In[122]:
+# In[ ]:
 
 
 prfSink = Node(DataSink(), name='prfSink')
@@ -2009,20 +2094,20 @@ prfSink.inputs.base_directory = pRF_dir
 # 
 # A workflow working directory is like a cache. It contains not only the outputs of various processing stages, it also contains various extraneous information such as execution reports, hashfiles determining the input state of processes. All of this is embedded in a hierarchical structure that reflects the iterables that have been used in the workflow. This makes navigating the working directory a not so pleasant experience. And typically the user is interested in preserving only a small percentage of these outputs. The DataSink interface can be used to extract components from this cache and store it at a different location.
 
-# In[123]:
+# In[ ]:
 
 
 dataSink = Node(DataSink(), name='dataSink')
 dataSink.inputs.base_directory = out_dir
 
 
-# In[124]:
+# In[ ]:
 
 
 #wf.connect(subjects, 'subject_id', dataSink, 'container')
 
 
-# In[125]:
+# In[ ]:
 
 
 # Nighres (red module)
@@ -2047,7 +2132,7 @@ if run_nighres_branch:
     wf.connect([(volumetricLayering,dataSink,[('layers','nighres.volumetricLayering.@layers')])])
 
 
-# In[126]:
+# In[ ]:
 
 
 # FS native brain mask (green module)
@@ -2056,10 +2141,11 @@ if run_FSnative_branch:
     wf.connect([(autorecon_resumeFSbrainmask,dataSink,[('T1','freesurfer_nativebrainmask.@T1')])])
     wf.connect([(autorecon_resumeFSbrainmask,dataSink,[('white','freesurfer_nativebrainmask.@white')])])
     wf.connect([(autorecon_resumeFSbrainmask,dataSink,[('pial','freesurfer_nativebrainmask.@pial')])])
+    wf.connect([(getWMMgz_FSNative,dataSink,[('out_file','freesurfer_nativebrainmask.@wm')])])
     wf.connect([(getBrainFinalsurfsMgz_FSNative,dataSink,[('out_file','freesurfer_nativebrainmask.@finalsurfs')])])
 
 
-# In[127]:
+# In[ ]:
 
 
 # FS external brain mask (blue module)
@@ -2071,9 +2157,11 @@ if run_FSexternal_branch:
 
     wf.connect([(automask,dataSink,[('out_file','freesurfer_externalbrainmask.@brainmask')])])
     
+    wf.connect([(getWMMgz_FSExternal,dataSink,[('out_file','freesurfer_externalbrainmask.@wm')])])
     wf.connect([(getBrainFinalsurfsMgz_FSExternal,dataSink,[('out_file','freesurfer_externalbrainmask.@finalsurfs')])])
     
-    if regenerate_surfaces:
+    if regenerate_surfaces and manual_edits:
+
         wf.connect([(autorecon_regenerate_surfaces,dataSink,[('white','freesurfer_regenerated')])])
         wf.connect([(autorecon_regenerate_surfaces,dataSink,[('pial','freesurfer_regenerated.@pial')])])
         
@@ -2082,7 +2170,7 @@ if run_FSexternal_branch:
 # wf.connect([(binarizeFSGM,dataSink,[('binary_file','freesurfer_externalbrainmask.@gm')])])
 
 
-# In[128]:
+# In[ ]:
 
 
 # # output brainmasks from the 3 modules
@@ -2113,14 +2201,14 @@ if run_FSexternal_branch:
 
 # ### Write graph for visualization and run pipeline
 
-# In[129]:
+# In[ ]:
 
 
 if write_graph:
     wf.write_graph("workflowgraph.dot",graph2use='exec', format='svg', simple_form=True)
 
 
-# In[130]:
+# In[ ]:
 
 
 if run_pipeline:
@@ -2130,26 +2218,26 @@ if run_pipeline:
         wf.run('MultiProc', plugin_args={'n_procs': n_procs})
 
 
-# In[131]:
+# In[ ]:
 
 
 #!nipypecli crash /home/mayaaj90/scripts/crash-20211211-160724-mayaaj90-duraEstimation.a0.b0.c0-1b7b5973-bdbb-457a-b3ad-5322f961e22a.pklz
 
 
-# In[132]:
+# In[ ]:
 
 
 #os.getcwd()
 
 
-# In[133]:
+# In[ ]:
 
 
 #watershed5 = Node(ReconAll(hires = True, flags = '-skullstrip -wsthresh 5 -clean-bm', parallel = True),
 #                  name="watershed5")
 
 
-# In[134]:
+# In[ ]:
 
 
 #wf.connect([(subjects, watershed5,[('subject_id', 'subject_id')])])

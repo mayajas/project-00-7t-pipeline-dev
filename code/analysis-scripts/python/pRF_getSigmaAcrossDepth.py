@@ -25,8 +25,11 @@ import pandas as pd
 import itertools
 
 #################################################################################################################
-# Stimulus size (same for all subjects)
-layer_space        = 'func'
+# Important variables 
+# layer space (either anat or func): space in which laynii layers are computed
+# prf model (either prfpy_Iso2DGaussianModel or prfpy_Iso2DGaussianModel_LinearDeveining)
+layer_space        = 'anat'
+prf_model    = 'prfpy_Iso2DGaussianModel_LinearDeveining'
 
 #################################################################################################################
 # Stimulus size (same for all subjects)
@@ -48,15 +51,20 @@ hem_list     = ['lh','rh']
 
 rsq_thresh = 0.1
 
+n_layers   = 6
+n_ecc      = 4
+n_sub      = len(subject_list)
+n_hem      = len(hem_list)
+
 #################################################################################################################
 ## Define data frame to store pRF values (pRF size x ecc)
 
-eccs = np.arange(2, 6, 1).tolist()*8
+eccs = np.linspace(2,2+n_ecc-1,n_ecc).tolist()*n_sub*n_hem
 
-hems = [['lh']*4,['rh']*4]
-hems = list(itertools.chain(*hems))*4
+hems = [['lh']*n_ecc,['rh']*n_ecc]
+hems = list(itertools.chain(*hems))*n_sub
 
-subs = [['sub-01']*8,['sub-02']*8,['sub-03']*8,['sub-04']*8]
+subs = [['sub-01']*n_hem*n_ecc,['sub-02']*n_hem*n_ecc,['sub-03']*n_hem*n_ecc,['sub-04']*n_hem*n_ecc]
 subs = list(itertools.chain(*subs))
 
 pRF_size = np.empty((1,len(eccs),)).tolist()
@@ -73,7 +81,7 @@ df_equivol_per_ecc = pd.DataFrame({
     'pRF size' : pRF_size,
     'depth' : depth
 })
-depth = [np.arange(0.2, 1.0, 0.1).tolist()]
+depth = [np.linspace(1,n_layers,n_layers).tolist()]
 idx = np.arange(0,len(df_equivol_per_ecc.index)).tolist()
 df_equivol_per_ecc.loc[idx, 'depth'] = pd.Series(depth*len(df_equivol_per_ecc.index), index=df_equivol_per_ecc.index[idx])
 
@@ -88,22 +96,20 @@ df_equidist_per_ecc = pd.DataFrame({
     'pRF size' : pRF_size,
     'depth' : depth
 })
-depth = [np.arange(0.2, 1.0, 0.1).tolist()]
+depth = [np.linspace(1,n_layers,n_layers).tolist()]
 idx = np.arange(0,len(df_equidist_per_ecc.index)).tolist()
 df_equidist_per_ecc.loc[idx, 'depth'] = pd.Series(depth*len(df_equidist_per_ecc.index), index=df_equidist_per_ecc.index[idx])
-
-
 
 
 #################################################################################################################
 ## Define data frame to store pRF values (pRF size x depth)
 
-depth = np.arange(0.2, 1.0, 0.1).tolist()*8
+depth = np.linspace(1,n_layers,n_layers).tolist()*n_hem*n_sub
 
-hems = [['lh']*8,['rh']*8]
-hems = list(itertools.chain(*hems))*4
+hems = [['lh']*n_layers,['rh']*n_layers]
+hems = list(itertools.chain(*hems))*n_sub
 
-subs = [['sub-01']*16,['sub-02']*16,['sub-03']*16,['sub-04']*16]
+subs = [['sub-01']*n_layers*n_hem,['sub-02']*n_layers*n_hem,['sub-03']*n_layers*n_hem,['sub-04']*n_layers*n_hem]
 subs = list(itertools.chain(*subs))
 
 pRF_size = np.empty((1,len(depth),)).tolist()
@@ -136,6 +142,108 @@ df_equidist_per_depth = pd.DataFrame({
 })
 
 #################################################################################################################
+## Define data frame to store pRF values (pRF size x depth) @ 2deg iso-ecc
+
+depth = np.linspace(1,n_layers,n_layers).tolist()*n_hem*n_sub
+
+hems = [['lh']*n_layers,['rh']*n_layers]
+hems = list(itertools.chain(*hems))*n_sub
+
+subs = [['sub-01']*n_layers*n_hem,['sub-02']*n_layers*n_hem,['sub-03']*n_layers*n_hem,['sub-04']*n_layers*n_hem]
+subs = list(itertools.chain(*subs))
+
+pRF_size = np.empty((1,len(depth),)).tolist()
+pRF_size = list(itertools.chain(*pRF_size))
+
+eccs = np.empty((1,len(depth),)).tolist()
+eccs = list(itertools.chain(*eccs))
+
+rsq_threshs = np.empty((1,len(depth),)).tolist()
+rsq_threshs = list(itertools.chain(*rsq_threshs))
+
+# equivol x depth
+df_equivol_per_depth_ecc2 = pd.DataFrame({
+    'sub id' : subs,
+    'hem' : hems,
+    'depth' : depth,
+    'pRF size' : pRF_size,
+    'ecc' : eccs,
+    'rsq' : rsq_threshs
+})
+
+# equidist x depth
+df_equidist_per_depth_ecc2 = pd.DataFrame({
+    'sub id' : subs,
+    'hem' : hems,
+    'depth' : depth,
+    'pRF size' : pRF_size,
+    'ecc' : eccs,
+    'rsq' : rsq_threshs
+})
+
+#################################################################################################################
+## Define data frame to store pRF values (pRF size x cortical distance)
+
+hems = [['lh'],['rh']]
+hems = list(itertools.chain(*hems))*n_sub
+
+subs = [['sub-01']*n_hem,['sub-02']*n_hem,['sub-03']*n_hem,['sub-04']*n_hem]
+subs = list(itertools.chain(*subs))
+
+pRF_size = np.empty((1,len(hems),)).tolist()
+pRF_size = list(itertools.chain(*pRF_size))
+
+eccs = np.empty((1,len(hems),)).tolist()
+eccs = list(itertools.chain(*eccs))
+
+rsq_threshs = np.empty((1,len(hems),)).tolist()
+rsq_threshs = list(itertools.chain(*rsq_threshs))
+
+cort_dist = np.empty((1,len(hems),)).tolist()
+cort_dist = list(itertools.chain(*cort_dist))
+
+# equivol x depth
+df_pRF_per_cortdist = pd.DataFrame({
+    'sub id' : subs,
+    'hem' : hems,
+    'pRF size' : pRF_size,
+    'ecc' : eccs,
+    'rsq' : rsq_threshs,
+    'cort dist': cort_dist
+})
+
+#################################################################################################################
+## Define data frame to store pRF values (pRF size x cortical distance) at manually-defined iso-eccentricity band
+
+hems = [['lh'],['rh']]
+hems = list(itertools.chain(*hems))*n_sub
+
+subs = [['sub-01']*n_hem,['sub-02']*n_hem,['sub-03']*n_hem,['sub-04']*n_hem]
+subs = list(itertools.chain(*subs))
+
+pRF_size = np.empty((1,len(hems),)).tolist()
+pRF_size = list(itertools.chain(*pRF_size))
+
+eccs = np.empty((1,len(hems),)).tolist()
+eccs = list(itertools.chain(*eccs))
+
+rsq_threshs = np.empty((1,len(hems),)).tolist()
+rsq_threshs = list(itertools.chain(*rsq_threshs))
+
+cort_dist = np.empty((1,len(hems),)).tolist()
+cort_dist = list(itertools.chain(*cort_dist))
+
+# equivol x depth
+df_pRF_per_cortdist_ecc2 = pd.DataFrame({
+    'sub id' : subs,
+    'hem' : hems,
+    'pRF size' : pRF_size,
+    'ecc' : eccs,
+    'rsq' : rsq_threshs,
+    'cort dist': cort_dist
+})
+
+#################################################################################################################
 ## Loop over subjects and hemispheres
 for sub_id in range(0,len(subject_list)):
     #print('#################################################################################################################')
@@ -146,7 +254,7 @@ for sub_id in range(0,len(subject_list)):
         ###########################################################################################
         ## Define input data directories and filenames
         # data directories
-        prfpy_dir    = '/home/mayajas/scratch/project-00-7t-pipeline-dev/output/prfpy_Iso2DGaussianModel/'+subject_list[sub_id]
+        prfpy_dir    = '/home/mayajas/scratch/project-00-7t-pipeline-dev/output/'+prf_model+'/'+subject_list[sub_id]
         proj_dir     = '/home/mayajas/scratch/project-00-7t-pipeline-dev/'
         data_dir     = opj(proj_dir,'output','func','sliceTimeCorr',
                         '_subject_id_'+subject_list[sub_id])
@@ -155,6 +263,7 @@ for sub_id in range(0,len(subject_list)):
             lay_dir      = opj(prfpy_dir,'layerification_func')
         else:
             lay_dir      = opj(prfpy_dir,'layerification')
+        lay_dir_func     = opj(prfpy_dir,'layerification_func')
 
         # image files
         meanFunc_fn  = opj(prfpy_dir,'meanFunc.nii')
@@ -177,10 +286,14 @@ for sub_id in range(0,len(subject_list)):
 
         # manual ROI delineations
         V1_fn        = opj(ROI_dir,'func_'+hem_list[hem_id]+'_V1.nii')
+        ecc2_fn      = opj(ROI_dir,'func_'+hem_list[hem_id]+'_ecc2.nii')
 
         # layers
         lay_equidist_fn = opj(lay_dir,'func_ribbon_rim_layers_equidist.nii')
         lay_equivol_fn = opj(lay_dir,'func_ribbon_rim_layers_equivol.nii')
+
+        # cortical distances (mm)
+        cortdist_fn = opj(lay_dir_func,'cortical_distances.nii')
 
         ###########################################################################################
         ## Load image files
@@ -189,8 +302,11 @@ for sub_id in range(0,len(subject_list)):
         meanFunc = nib.load(meanFunc_fn)
         UNI = nib.load(UNI_func_fn)
         V1=nib.load(V1_fn)
+        ecc2=nib.load(ecc2_fn)
         lay_equidist=nib.load(lay_equidist_fn)
         lay_equivol=nib.load(lay_equivol_fn)
+        cort_distances=nib.load(cortdist_fn)
+        
 
         # define mask (GM+occipital) and process bar data and masker
         mask = image.math_img("np.logical_and(img1, img2)", img1=occ, img2=GM)
@@ -203,11 +319,17 @@ for sub_id in range(0,len(subject_list)):
         masked_V1 = masker.fit_transform(V1)
         masked_V1 = np.squeeze(masked_V1)
 
+        masked_ecc2 = masker.fit_transform(ecc2)
+        masked_ecc2 = np.squeeze(masked_ecc2)
+
         masked_lay_equidist = masker.fit_transform(lay_equidist)
         masked_lay_equidist = np.squeeze(masked_lay_equidist)
 
         masked_lay_equivol = masker.fit_transform(lay_equivol)
         masked_lay_equivol = np.squeeze(masked_lay_equivol)
+
+        masked_cort_distances = masker.fit_transform(cort_distances)
+        masked_cort_distances = np.squeeze(masked_cort_distances)
 
         ###########################################################################################
         ## Load pRF results
@@ -223,7 +345,7 @@ for sub_id in range(0,len(subject_list)):
         sigma_ecc_5 = []
         #print('')
         #print('Equivolumetric layering:')
-        for layer in range(2,np.size(np.unique(masked_lay_equivol))):
+        for layer in range(int(min(np.unique(masked_lay_equivol))),int(max(np.unique(masked_lay_equivol)))):
             #print('')
             #print('Layer '+str(layer))
             ecc_idx = (ecc >= 1.5) & (ecc < 2.5)
@@ -283,7 +405,7 @@ for sub_id in range(0,len(subject_list)):
         sigma_ecc_5 = []
         #print('')
         #print('Equidistant layering:')
-        for layer in range(2,np.size(np.unique(masked_lay_equidist))):
+        for layer in range(int(min(np.unique(masked_lay_equidist))),int(max(np.unique(masked_lay_equidist)))):
             #print('')
             #print('Layer '+str(layer))
             ecc_idx = (ecc >= 1.5) & (ecc < 2.5)
@@ -336,7 +458,7 @@ for sub_id in range(0,len(subject_list)):
         ###########################################################################################
         ## Extract sigma per depth: equivolumetric
         depth_idx=0
-        for layer in range(2,np.size(np.unique(masked_lay_equivol))):
+        for layer in range(int(min(np.unique(masked_lay_equivol))),int(max(np.unique(masked_lay_equivol)))):
             sigmaxlayer = sigma[(masked_V1==1) & (masked_lay_equivol == layer)]
             eccxlayer = ecc[(masked_V1==1) & (masked_lay_equivol == layer)]
             rsqxlayer = total_rsq[(masked_V1==1) & (masked_lay_equivol == layer)]
@@ -352,7 +474,7 @@ for sub_id in range(0,len(subject_list)):
         ###########################################################################################
         ## Extract sigma per depth: equidistant
         depth_idx=0
-        for layer in range(2,np.size(np.unique(masked_lay_equidist))):
+        for layer in range(int(min(np.unique(masked_lay_equidist))),int(max(np.unique(masked_lay_equidist)))):
             sigmaxlayer = sigma[(masked_V1==1) & (masked_lay_equidist == layer)]
             eccxlayer = ecc[(masked_V1==1) & (masked_lay_equidist == layer)]
             rsqxlayer = total_rsq[(masked_V1==1) & (masked_lay_equidist == layer)]
@@ -364,7 +486,67 @@ for sub_id in range(0,len(subject_list)):
             df_equidist_per_depth.loc[idx, 'ecc'] = pd.Series([eccxlayer]*len(idx), index=df_equidist_per_depth.index[idx])
             df_equidist_per_depth.loc[idx, 'rsq'] = pd.Series([rsqxlayer]*len(idx), index=df_equidist_per_depth.index[idx])
             depth_idx += 1
+        
+        ###########################################################################################
+        ## Extract sigma per depth: equivolumetric (manually-defined iso-ecc)
+        depth_idx=0
+        for layer in range(int(min(np.unique(masked_lay_equivol))),int(max(np.unique(masked_lay_equivol)))):
+            sigmaxlayer = sigma[(masked_V1==1) & (masked_lay_equivol == layer) & (masked_ecc2==1)]
+            eccxlayer = ecc[(masked_V1==1) & (masked_lay_equivol == layer) & (masked_ecc2==1)]
+            rsqxlayer = total_rsq[(masked_V1==1) & (masked_lay_equivol == layer) & (masked_ecc2==1)]
+            
+            idx=df_equivol_per_depth_ecc2.loc[(df_equivol_per_depth_ecc2['sub id'] == subject_list[sub_id]) & 
+                                       (df_equivol_per_depth_ecc2['hem'] == hem_list[hem_id]) & 
+                                       (df_equivol_per_depth_ecc2['depth'] == depth[depth_idx])].index.tolist()
+            df_equivol_per_depth_ecc2.loc[idx, 'pRF size'] = pd.Series([sigmaxlayer]*len(idx), index=df_equivol_per_depth_ecc2.index[idx])
+            df_equivol_per_depth_ecc2.loc[idx, 'ecc'] = pd.Series([eccxlayer]*len(idx), index=df_equivol_per_depth_ecc2.index[idx])
+            df_equivol_per_depth_ecc2.loc[idx, 'rsq'] = pd.Series([rsqxlayer]*len(idx), index=df_equivol_per_depth_ecc2.index[idx])
+            
+            depth_idx += 1
+        ###########################################################################################
+        ## Extract sigma per depth: equidistant (manually-defined iso-ecc)
+        depth_idx=0
+        for layer in range(int(min(np.unique(masked_lay_equidist))),int(max(np.unique(masked_lay_equidist)))):
+            sigmaxlayer = sigma[(masked_V1==1) & (masked_lay_equidist == layer) & (masked_ecc2==1)]
+            eccxlayer = ecc[(masked_V1==1) & (masked_lay_equidist == layer) & (masked_ecc2==1)]
+            rsqxlayer = total_rsq[(masked_V1==1) & (masked_lay_equidist == layer) & (masked_ecc2==1)]
 
+            idx=df_equidist_per_depth_ecc2.loc[(df_equidist_per_depth_ecc2['sub id'] == subject_list[sub_id]) & 
+                                       (df_equidist_per_depth_ecc2['hem'] == hem_list[hem_id]) & 
+                                       (df_equidist_per_depth_ecc2['depth'] == depth[depth_idx])].index.tolist()
+            df_equidist_per_depth_ecc2.loc[idx, 'pRF size'] = pd.Series([sigmaxlayer]*len(idx), index=df_equidist_per_depth_ecc2.index[idx])
+            df_equidist_per_depth_ecc2.loc[idx, 'ecc'] = pd.Series([eccxlayer]*len(idx), index=df_equidist_per_depth_ecc2.index[idx])
+            df_equidist_per_depth_ecc2.loc[idx, 'rsq'] = pd.Series([rsqxlayer]*len(idx), index=df_equidist_per_depth_ecc2.index[idx])
+            depth_idx += 1
+        
+        ###########################################################################################
+        ## Extract sigma per cortical distance
+        sigmaxcortdist = sigma[(masked_V1==1)]
+        eccxcortdist = ecc[(masked_V1==1)]
+        rsqxcortdist = total_rsq[(masked_V1==1)]
+        cortdist     = masked_cort_distances[(masked_V1==1)]
+
+        idx=df_pRF_per_cortdist.loc[(df_pRF_per_cortdist['sub id'] == subject_list[sub_id]) & 
+                                    (df_pRF_per_cortdist['hem'] == hem_list[hem_id])].index.tolist()
+        df_pRF_per_cortdist.loc[idx, 'pRF size'] = pd.Series([sigmaxcortdist]*len(idx), index=df_pRF_per_cortdist.index[idx])
+        df_pRF_per_cortdist.loc[idx, 'ecc'] = pd.Series([eccxcortdist]*len(idx), index=df_pRF_per_cortdist.index[idx])
+        df_pRF_per_cortdist.loc[idx, 'rsq'] = pd.Series([rsqxcortdist]*len(idx), index=df_pRF_per_cortdist.index[idx])
+        df_pRF_per_cortdist.loc[idx, 'cort dist'] = pd.Series([cortdist]*len(idx), index=df_pRF_per_cortdist.index[idx])
+        
+
+        ###########################################################################################
+        ## Extract sigma per cortical distance @ manually-defined iso-eccentricity band (1-3 deg)
+        sigmaxcortdist = sigma[(masked_V1==1) & (masked_ecc2==1)]
+        eccxcortdist = ecc[(masked_V1==1) & (masked_ecc2==1)]
+        rsqxcortdist = total_rsq[(masked_V1==1) & (masked_ecc2==1)]
+        cortdist     = masked_cort_distances[(masked_V1==1) & (masked_ecc2==1)]
+
+        idx=df_pRF_per_cortdist_ecc2.loc[(df_pRF_per_cortdist_ecc2['sub id'] == subject_list[sub_id]) & 
+                                    (df_pRF_per_cortdist_ecc2['hem'] == hem_list[hem_id])].index.tolist()
+        df_pRF_per_cortdist_ecc2.loc[idx, 'pRF size'] = pd.Series([sigmaxcortdist]*len(idx), index=df_pRF_per_cortdist_ecc2.index[idx])
+        df_pRF_per_cortdist_ecc2.loc[idx, 'ecc'] = pd.Series([eccxcortdist]*len(idx), index=df_pRF_per_cortdist_ecc2.index[idx])
+        df_pRF_per_cortdist_ecc2.loc[idx, 'rsq'] = pd.Series([rsqxcortdist]*len(idx), index=df_pRF_per_cortdist_ecc2.index[idx])
+        df_pRF_per_cortdist_ecc2.loc[idx, 'cort dist'] = pd.Series([cortdist]*len(idx), index=df_pRF_per_cortdist_ecc2.index[idx])
 
 
 # save df
@@ -372,5 +554,5 @@ if layer_space == 'func':
     f = open(opj(prfpy_dir,'..','df_layers_func'), 'wb')
 else:
     f = open(opj(prfpy_dir,'..','df_layers'), 'wb')
-pickle.dump([df_equivol_per_ecc,df_equidist_per_ecc,df_equivol_per_depth,df_equidist_per_depth], f)
+pickle.dump([df_equivol_per_ecc,df_equidist_per_ecc,df_equivol_per_depth,df_equivol_per_depth_ecc2,df_equidist_per_depth,df_equidist_per_depth_ecc2,df_pRF_per_cortdist,df_pRF_per_cortdist_ecc2], f)
 f.close()

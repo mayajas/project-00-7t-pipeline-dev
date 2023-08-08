@@ -16,6 +16,7 @@ from nilearn.maskers import NiftiMasker
 from nilearn import image
 import pickle
 import math 
+from scipy.io import savemat
 
 # get nr of processing threads (based on slurm script)
 n_procs = int(os.getenv('OMP_NUM_THREADS'))   
@@ -25,36 +26,53 @@ print(n_procs)
 sub_id       = int(sys.argv[1])
 hem_id       = int(sys.argv[2])
 
+# choose whether to use raw data or linearly deveined
+linear_deveining = False
+
 # list of all sub and hem ids
 subject_list = ['sub-01','sub-02','sub-03','sub-04']
 hem_list     = ['lh','rh']
 
 # directories
 proj_dir     = '/scratch/mayaaj90/project-00-7t-pipeline-dev/'
-data_dir     = opj(proj_dir,'output','func','sliceTimeCorr',
-                   '_subject_id_'+subject_list[sub_id])
+# data_dir     = opj(proj_dir,'output','func','sliceTimeCorr',
+#                    '_subject_id_'+subject_list[sub_id])
+data_dir     = opj(proj_dir,'output','prfpy',subject_list[sub_id])
+
 home_dir  = '/home/mayaaj90/projects/project-00-7t-pipeline-dev/'
-prfpy_output_dir = opj(proj_dir,'output','prfpy_Iso2DGaussianModel',subject_list[sub_id])
+if linear_deveining:
+    prfpy_output_dir = opj(proj_dir,'output','prfpy_Iso2DGaussianModel_LinearDeveining',subject_list[sub_id])
+else:
+    prfpy_output_dir = opj(proj_dir,'output','prfpy_Iso2DGaussianModel',subject_list[sub_id])
 
 # check if prfpy dir exists 
-# (it should, and it should contain an occipital mask and GM mask)
 if not os.path.isdir(prfpy_output_dir):
     os.makedirs(prfpy_output_dir)
 
 # image files
-bar1_file    = opj(data_dir,'_sess_id_task-bar_run-01_sess_nr_0_sess_nvol_124','atask-bar_run-01_roi_warp4D.nii')
-bar2_file    = opj(data_dir,'_sess_id_task-bar_run-02_sess_nr_1_sess_nvol_124','atask-bar_run-02_roi_warp4D.nii')
-meanFunc_file= opj(proj_dir,'output','func','meanFunc',
-                   '_subject_id_'+subject_list[sub_id],'merged_func_mcf.nii_mean_reg.nii')
-GM_file      = opj(prfpy_output_dir,
-                   hem_list[hem_id]+'_GM_funcSpace.nii')
-occ_file     = opj(prfpy_output_dir,
-                  'funcSpaceOccipitalMask.nii')
+if linear_deveining:
+    bar1_file = opj(proj_dir,'output','deveining',subject_list[sub_id],'deveined_linear','bar1_deveinLinear.nii')
+    bar2_file = opj(proj_dir,'output','deveining',subject_list[sub_id],'deveined_linear','bar1_deveinLinear.nii')
+else:
+    # bar1_file    = opj(data_dir,'_sess_id_task-bar_run-01_sess_nr_0_sess_nvol_124','atask-bar_run-01_roi_warp4D.nii')
+    # bar2_file    = opj(data_dir,'_sess_id_task-bar_run-02_sess_nr_1_sess_nvol_124','atask-bar_run-02_roi_warp4D.nii')
+    bar1_file    = opj(data_dir,'reg_bar1.nii')
+    bar2_file    = opj(data_dir,'reg_bar2.nii')
+meanFunc_file= opj(data_dir,'reg_meanFunc.nii')
+GM_file      = opj(data_dir,hem_list[hem_id]+'_GM_inflated_ds.nii')
+occ_file     = opj(data_dir,'occMask.nii')
+# meanFunc_file= opj(proj_dir,'output','func','meanFunc',
+#                    '_subject_id_'+subject_list[sub_id],'merged_func_mcf.nii_mean_reg.nii')
+# GM_file      = opj(prfpy_output_dir,
+#                    hem_list[hem_id]+'_GM_funcSpace.nii')
+# occ_file     = opj(prfpy_output_dir,
+#                   'funcSpaceOccipitalMask.nii')
     
 # set names of output files
 grid_fit_file      = opj(prfpy_output_dir,hem_list[hem_id]+'_grid_fit.pckl')
 iterative_fit_file = opj(prfpy_output_dir,hem_list[hem_id]+'_iterative_fit.pckl')
 pRF_param_file     = opj(prfpy_output_dir,hem_list[hem_id]+'_pRF_params.pckl')
+bar_mat_file       = opj(prfpy_output_dir,hem_list[hem_id]+'_bar.mat')
 
 # set working dir
 if os.getcwd() != opj(home_dir,'code','analysis-scripts','python'):
@@ -114,6 +132,9 @@ masked_bar2 = masked_bar2_raw.T
 # Average bar runs
 bar_data = (masked_bar1 + masked_bar2)/2
 
+# Save mat file
+mymat={'bar_data':bar_data}
+savemat(bar_mat_file, mymat)
 
 ## Simple masker for 3D data (no time dim)
 # Apply simple masker to mean functional
@@ -248,7 +269,7 @@ finally:
 
 
 # Threshold by rsq
-rsq_thresh_viz = 0.1
+rsq_thresh_viz = 0.01
 
 x[total_rsq<rsq_thresh_viz] = float('nan')
 y[total_rsq<rsq_thresh_viz] = float('nan')

@@ -14,23 +14,10 @@
 # - discard initial fMRI volumes to allow for T1 equilibration
 # - realignment: head-motion estimation and correction (FSL MCFLIRT); within and between sessions
 # - (optional) susceptibility-derived distortion estimation and unwarping (AFNI 3dqwarp)
-# - (optional) slice-timing correction (AFNI 3dTshift)
-# - compute temporal SNR (to assess the noisiness of the data in different brain areas)
-# - co-registration of functional and structural data (FreeSurfer bbregister, FLIRT FSL) - note: structural data is brought into functional space to avoid superfluous interpolation of functional volumes!
-# - iteratively: check results (and manual correction) w/ tkregisterfv and run bbregister again
-# - surface sampling (FreeSurfer mri_vol2surf)
-# - confounds (FSL fsl_motion_outliers then fsl_regfilt?)
-# - detection of non-steady states ???
+# - slice-timing correction (SPM)
+# - (done in separate notebook) compute temporal SNR (to assess the noisiness of the data in different brain areas)
+# - co-registration of functional and structural data (ANTs) - note: structural data is brought into functional space to avoid superfluous interpolation of functional volumes!
 # 
-# pRF: decide on software
-# - what format of input data?
-# - what format of aperture parameters?
-# - anatomical priors (neuropythy)
-# - combine empirical estimate and anatomical priors for Bayesian
-# - decide which sessions to use (pol, ecc, bar)
-# 
-# 
-# try using raw image (not skull-stripped) for coreg
 
 # ### Set preferences
 # Whether or not to write the workflow viz graph, run pipeline, run specific branches of workflow...
@@ -50,10 +37,12 @@ write_graph  = True
 manual_edits = True      
 
 # whether to do unwarping
-unwarp = False         
+unwarp = True   
+precalc_fmap = True # if fmap has been precalculated outside pipeline
 
-# whether to do coregistration
-coregister = False
+# whether to apply coregistration
+coregister = True
+precalc_coreg = True # if coregistration transform has been precalculated outside pipeline
 
 # coregistration method: 'flirt','freesurfer', 'antsRegistration' or 'itk-snap'
 coreg_method = 'antsRegistration' 
@@ -105,9 +94,8 @@ dicom_dir = opj(data_dir,'dicoms')
 # location of freesurfer skull-stripped T1 (output of structural processing pipeline)
 struct_out = opj(data_dir,'output','freesurfer_externalbrainmask')
 
-# pRF directories
-pRF_dir = opj(data_dir,'pRF')
-pRF_FS_dir = opj(data_dir,'pRF','data_FS')
+# pRF directory
+pRF_dir = opj(data_dir,'output','prfpy')
 
 # output directory for datasink
 out_dir = opj(data_dir,'output')
@@ -151,7 +139,8 @@ from nipype.interfaces.base import (
 
 from string import Template
 
-from nipype.interfaces.utility import Function, IdentityInterface, Merge, Select
+from nipype.interfaces.utility import Function, IdentityInterface, Select
+from nipype.interfaces.utility import Merge as utilMerge
 from nipype.interfaces.base import BaseInterface, BaseInterfaceInputSpec, CommandLine, Directory, File, TraitedSpec, traits
 
 from nipype import config
@@ -166,7 +155,8 @@ import pygraphviz
 from pydicom.data import get_testdata_file
 from pydicom import dcmread
 
-from nipype.interfaces.fsl import BET, PrepareFieldmap, ExtractROI, MCFLIRT, Merge, ConvertXFM, FLIRT
+from nipype.interfaces.fsl import BET, PrepareFieldmap, ExtractROI, MCFLIRT, ConvertXFM, FLIRT
+from nipype.interfaces.fsl import Merge as fslMerge
 
 from nipype.interfaces.freesurfer.registration import MRICoreg
 from nipype.interfaces.freesurfer.preprocess import BBRegister
@@ -221,19 +211,21 @@ T1_id = 'T1.mgz'                                                # name of prepro
 # WM_id = 'wm.mask_thresh.nii'
 
 # manual correction files - from itksnap
-coregT1_out_id = 'coregT1_out.nii'
-# coreg_itksnap_struct2func_txt_id = 'coreg_itksnap_struct2func.txt'
+coreg_itksnap_struct2func_txt_id = 'coreg_itksnap_struct2func.txt'
 # coreg_itksnap_struct2func_mat_id = 'coreg_itksnap_struct2func.mat'
 coreg_itksnap_func2struct_txt_id = 'coreg_itksnap_func2struct.txt'
+coreg_regUNI2T1_id      = 'regUNI2T1_Composite.h5'
+coreg_regFUNC2UNI_id    = 'regFUNC2UNI_Composite.h5'
 # coreg_itksnap_func2struct_mat_id = 'coreg_itksnap_func2struct.mat'
 
-manual_midoccmask_id = 'midoccMask.nii'
+manual_midoccmask_id    = 'midoccMask.nii'
 manual_occipitalmask_id = 'occipitalMask.nii'
 
 if fmap_method == 1:
-    fmap_magnitude1_id = 'magnitude1.nii'
-    fmap_magnitude2_id = 'magnitude2.nii'
-    fmap_phasediff_id = 'phasediff.nii'
+    fmap_magnitude1_id  = 'magnitude1.nii'
+    fmap_magnitude2_id  = 'magnitude2.nii'
+    fmap_phasediff_id   = 'phasediff.nii'
+    precalc_fmap_id     = 'funcReg_fmap_rads.nii'
 #elif fmap_method == 2:
     # implement
 
@@ -251,7 +243,7 @@ n_vol_rs_ge = 50                                                # number of volu
 n_vol_rs_se = 50                                                # number of volumes of SE RS pRF mapping stimulus
 
 # iterables
-#subject_list = ['sub-01','sub-02','sub-03','sub-04']            # subject identifiers
+# subject_list = ['sub-01','sub-02','sub-03','sub-04']            # subject identifiers
 subject_list = ['sub-01']            # subject identifiers
 sess_id_list = ['task-bar_run-01', 'task-bar_run-02',           # func session identifiers
              'task-pol_run-01', 'task-pol_run-02',
@@ -339,7 +331,7 @@ effective_echo_spacing = 1/(bandwidth_per_pixel_phase_encode + matrix_size_phase
 total_readout_time = (matrix_size_phase - 1) * effective_echo_spacing
 
 # deltaTE
-delta_TE = 1.02                      # in milliseconds [ms]      
+delta_TE = 2.46                      # in milliseconds [ms]      
                                      # (a float, nipype default value: 2.46) 
                                      # echo time difference of the fieldmap 
                                      # sequence in ms. (usually 2.46ms in Siemens)
@@ -351,10 +343,16 @@ delta_TE = 1.02                      # in milliseconds [ms]
 (bandwidth_per_pixel_phase_encode + matrix_size_phase)
 
 
+# In[12]:
+
+
+effective_echo_spacing
+
+
 # ### Create workflow
 # About connecting nodes: https://nipype.readthedocs.io/en/0.11.0/users/joinnode_and_itersource.html
 
-# In[12]:
+# In[13]:
 
 
 wf = Workflow(name=wf_name, base_dir=der_dir)
@@ -362,14 +360,14 @@ wf = Workflow(name=wf_name, base_dir=der_dir)
 
 # ### Subjects & functional sessions
 
-# In[13]:
+# In[14]:
 
 
 subjects = Node(IdentityInterface(fields=['subject_id']),name='subjects')
 subjects.iterables = [('subject_id', subject_list)]
 
 
-# In[14]:
+# In[15]:
 
 
 sessions = Node(IdentityInterface(fields=['sess_id','sess_nvol','sess_nr']),name='sessions')
@@ -379,7 +377,7 @@ sessions.synchronize = True
 
 # ### Acquisition parameters
 
-# In[15]:
+# In[16]:
 
 
 acquisitionParams = Node(IdentityInterface(fields=['n_dummy', 'TR'
@@ -409,7 +407,7 @@ acquisitionParams.inputs.delta_TE = delta_TE
 
 # #### Anatomical and field map data
 
-# In[16]:
+# In[17]:
 
 
 datasource = Node(DataGrabber(infields=['subject_id'], outfields=['UNI', 'T1', 
@@ -435,7 +433,7 @@ datasource.inputs.template_args = dict(UNI=[['subject_id']],
                                        )
 
 
-# In[17]:
+# In[18]:
 
 
 wf.connect([(subjects, datasource,[('subject_id', 'subject_id')])])
@@ -443,27 +441,33 @@ wf.connect([(subjects, datasource,[('subject_id', 'subject_id')])])
 
 # ##### Convert T1.mgz to .nii
 
-# In[18]:
+# In[19]:
 
 
 out_type = 'nii'
 
 
-# In[19]:
+# In[20]:
 
 
 convertT1ToNii = Node(MRIConvert(out_type=out_type), name='convertT1ToNii')
 
 
-# In[20]:
+# In[21]:
 
 
 wf.connect([(datasource,convertT1ToNii,[('T1', 'in_file')])])
 
 
+# In[22]:
+
+
+MRIConvert.help()
+
+
 # #### Functional data
 
-# In[21]:
+# In[23]:
 
 
 datasourceFunc = Node(DataGrabber(infields=['subject_id','sess_id'], outfields=['sess_id', 
@@ -478,7 +482,7 @@ datasourceFunc.inputs.template_args = dict(sess_id=[['subject_id','sess_id']]
                                        )
 
 
-# In[22]:
+# In[24]:
 
 
 wf.connect([(subjects, datasourceFunc, [('subject_id', 'subject_id')])])
@@ -488,41 +492,74 @@ wf.connect([(sessions, datasourceFunc, [('sess_id', 'sess_id')])])
 # #### Manual edits
 # (if they exist)
 
-# In[23]:
+# In[25]:
 
 
-datasourceManualEdits = Node(DataGrabber(infields=['subject_id'], outfields=[#'coreg_itksnap_struct2func_txt',
+datasourceManualEdits = Node(DataGrabber(infields=['subject_id'], outfields=['coreg_regFUNC2UNI',
+                                                                             'coreg_regUNI2T1',
+                                                                             #'coreg_itksnap_struct2func_txt',
                                                                              #'coreg_itksnap_struct2func_mat',
-                                                                             'coreg_itksnap_func2struct_txt',
+                                                                             #'coreg_itksnap_func2struct_txt',
                                                                              #'coreg_itksnap_func2struct_mat',
-                                                                             'manual_midoccmask',
-                                                                             'manual_occipitalmask',
+                                                                             #'manual_midoccmask',
+                                                                             #'manual_occipitalmask',
                                                                              'subject_id']),
                  name='datasourceManualEdits')
 datasourceManualEdits.inputs.base_directory = data_dir
 datasourceManualEdits.inputs.sort_filelist = False
 datasourceManualEdits.inputs.template = '*'
-datasourceManualEdits.inputs.field_template = dict(#coreg_itksnap_struct2func_txt='manualcorr/func/_subject_id_%s/'+coreg_itksnap_struct2func_txt_id,
+datasourceManualEdits.inputs.field_template = dict(coreg_regFUNC2UNI='manualcorr/coreg/_subject_id_%s/func2struct/'+coreg_regFUNC2UNI_id,
+                                                   coreg_regUNI2T1='manualcorr/coreg/_subject_id_%s/func2struct/'+coreg_regUNI2T1_id
+                                                   #coreg_itksnap_struct2func_txt='manualcorr/func/_subject_id_%s/'+coreg_itksnap_struct2func_txt_id,
                                                    #coreg_itksnap_struct2func_mat='manualcorr/func/_subject_id_%s/'+coreg_itksnap_struct2func_mat_id,
-                                                   coreg_itksnap_func2struct_txt='manualcorr/func/_subject_id_%s/'+coreg_itksnap_func2struct_txt_id,
+                                                   #coreg_itksnap_func2struct_txt='manualcorr/func/_subject_id_%s/'+coreg_itksnap_func2struct_txt_id,
                                                    #coreg_itksnap_func2struct_mat='manualcorr/func/_subject_id_%s/'+coreg_itksnap_func2struct_mat_id,
-                                                   manual_midoccmask='manualcorr/func/_subject_id_%s/'+manual_midoccmask_id,
-                                                   manual_occipitalmask='manualcorr/func/_subject_id_%s/'+manual_occipitalmask_id
+                                                   #manual_midoccmask='manualcorr/func/_subject_id_%s/'+manual_midoccmask_id,
+                                                   #manual_occipitalmask='manualcorr/func/_subject_id_%s/'+manual_occipitalmask_id,
+
                                        )
-datasourceManualEdits.inputs.template_args = dict(#coreg_itksnap_struct2func_txt=[['subject_id']],
+datasourceManualEdits.inputs.template_args = dict(coreg_regFUNC2UNI=[['subject_id']],
+                                                  coreg_regUNI2T1=[['subject_id']]
+                                                  #coreg_itksnap_struct2func_txt=[['subject_id']],
                                                   #coreg_itksnap_struct2func_mat=[['subject_id']],
-                                                  coreg_itksnap_func2struct_txt=[['subject_id']],
+                                                  #coreg_itksnap_func2struct_txt=[['subject_id']],
                                                   #coreg_itksnap_func2struct_mat=[['subject_id']],
-                                                  manual_midoccmask=[['subject_id']],
-                                                  manual_occipitalmask=[['subject_id']]
+                                                  #manual_midoccmask=[['subject_id']],
+                                                  #manual_occipitalmask=[['subject_id']],
                                        )
 
 
-# In[24]:
+# In[26]:
 
 
 if manual_edits: 
     wf.connect([(subjects, datasourceManualEdits, [('subject_id', 'subject_id')])])
+
+
+# #### Pre-calculated field-map
+# (if it exists)
+
+# In[27]:
+
+
+datasourcePrecalcFmap = Node(DataGrabber(infields=['subject_id'], outfields=['precalc_fmap',
+                                                                             'subject_id']),
+                 name='datasourcePrecalcFmap')
+datasourcePrecalcFmap.inputs.base_directory = data_dir
+datasourcePrecalcFmap.inputs.sort_filelist = False
+datasourcePrecalcFmap.inputs.template = '*'
+datasourcePrecalcFmap.inputs.field_template = dict(precalc_fmap='output/fmap/_subject_id_%s/'+precalc_fmap_id
+
+                                       )
+datasourcePrecalcFmap.inputs.template_args = dict(precalc_fmap=[['subject_id']]
+                                       )
+
+
+# In[28]:
+
+
+if precalc_fmap: 
+    wf.connect([(subjects, datasourcePrecalcFmap, [('subject_id', 'subject_id')])])
 
 
 # ### Calculate field map
@@ -538,17 +575,18 @@ if manual_edits:
 # #### Brain extract magnitude image
 # Use magnitude1.nii by default
 
-# In[25]:
+# In[29]:
 
 
 # FSL BET - run on magnitude1.nii image
 betMagnImg = Node(BET(),name='betMagnImg')
 
 
-# In[26]:
+# In[30]:
 
 
-wf.connect([(datasource,betMagnImg,[('fmap_magnitude1','in_file')])])
+if unwarp and not precalc_fmap:
+    wf.connect([(datasource,betMagnImg,[('fmap_magnitude1','in_file')])])
 
 
 # #### Prepare field map
@@ -571,17 +609,17 @@ wf.connect([(datasource,betMagnImg,[('fmap_magnitude1','in_file')])])
 #         
 # https://nipype.readthedocs.io/en/0.12.1/interfaces/generated/nipype.interfaces.fsl.epi.html#preparefieldmap
 
-# In[27]:
+# In[31]:
 
 
-if unwarp:
+if unwarp and not precalc_fmap:
     prepFieldMap = Node(PrepareFieldmap(), name='prepFieldMap')
 
 
-# In[28]:
+# In[32]:
 
 
-if unwarp:
+if unwarp and not precalc_fmap:
     wf.connect([(acquisitionParams,prepFieldMap,[('delta_TE','delta_TE')])])
     wf.connect([(betMagnImg,prepFieldMap,[('out_file','in_magnitude')])])
     wf.connect([(datasource,prepFieldMap,[('fmap_phasediff','in_phase')])])
@@ -590,17 +628,23 @@ if unwarp:
 # ### Discard initial fMRI volumes to allow for T1 equilibration
 # 
 
-# In[29]:
+# In[33]:
 
 
 discardDummies = Node(ExtractROI(t_min=n_dummy), name='discardDummies')
 
 
-# In[30]:
+# In[34]:
 
 
 wf.connect([(datasourceFunc, discardDummies,[('sess_id', 'in_file')])])
 wf.connect([(sessions, discardDummies,[('sess_nvol', 't_size')])])
+
+
+# In[35]:
+
+
+ExtractROI.help()
 
 
 # ### Realignment: head-motion estimation and correction (FSL MCFLIRT)
@@ -614,7 +658,7 @@ wf.connect([(sessions, discardDummies,[('sess_nvol', 't_size')])])
 # 
 # #### Within sessions
 
-# In[31]:
+# In[36]:
 
 
 mean_vol  = False             # (a boolean) register to mean volume
@@ -622,20 +666,20 @@ save_mats = True              # (a boolean) save transformation parameters
 ref_vol   = 1                 # (an integer) volume to align frames to
 
 
-# In[32]:
+# In[37]:
 
 
 mcflirtWithinSess = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats, ref_vol=ref_vol), 
                name='mcflirtWithinSess')
 
 
-# In[33]:
+# In[38]:
 
 
 wf.connect([(discardDummies, mcflirtWithinSess,[('roi_file','in_file')])])
 
 
-# In[34]:
+# In[39]:
 
 
 MCFLIRT.help()
@@ -644,19 +688,19 @@ MCFLIRT.help()
 # #### Between sessions
 # ##### Take mean of each run
 
-# In[35]:
+# In[40]:
 
 
 getMeanImg = Node(MeanImage(dimension='T'),name='getMeanImg')
 
 
-# In[36]:
+# In[41]:
 
 
 wf.connect([(mcflirtWithinSess,getMeanImg,[('out_file','in_file')])])
 
 
-# In[37]:
+# In[42]:
 
 
 MeanImage.help()
@@ -664,7 +708,7 @@ MeanImage.help()
 
 # ##### Concatenate mean runs
 
-# In[38]:
+# In[43]:
 
 
 dimension = 't'
@@ -672,16 +716,16 @@ output_type = 'NIFTI'
 merged_file = 'merged_means.nii'
 
 
-# In[39]:
+# In[44]:
 
 
-concatenateMeans = JoinNode(Merge(dimension=dimension, output_type=output_type, merged_file=merged_file),
+concatenateMeans = JoinNode(fslMerge(dimension=dimension, output_type=output_type, merged_file=merged_file),
                         joinfield='in_files',
                         joinsource='sessions',
                         name="concatenateMeans")
 
 
-# In[40]:
+# In[45]:
 
 
 # wf.connect([(mcflirtWithinSess, concatenateMeans,[('mean_img', 'in_files')])])
@@ -690,30 +734,31 @@ wf.connect([(getMeanImg, concatenateMeans,[('out_file', 'in_files')])])
 
 # ##### MCFLIRT on merged mean runs
 
-# In[41]:
+# In[46]:
 
 
-mean_vol  = False             # (a boolean) register to mean volume
-save_mats = True              # (a boolean) save transformation parameters
+mean_vol = False               # (a boolean) register to mean volume
+save_mats = True               # (a boolean) save transformation parameters
 ref_vol   = 1                 # (an integer) volume to align frames to
 
-# In[42]:
+
+# In[47]:
 
 
 mcflirtBetweenSess = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats, ref_vol=ref_vol), 
                name='mcflirtBetweenSess')
 
 
-# In[43]:
+# In[48]:
 
 
 wf.connect([(concatenateMeans, mcflirtBetweenSess,[('merged_file','in_file')])])
 
 
-# In[44]:
+# In[49]:
 
 
-MCFLIRT.help()
+#MCFLIRT.help()
 
 
 # ##### Concatenate transformation matrices
@@ -721,13 +766,13 @@ MCFLIRT.help()
 
 # Select given session's transformation mat
 
-# In[45]:
+# In[50]:
 
 
 betweenMat = Node(Select(), name='betweenMat')
 
 
-# In[46]:
+# In[51]:
 
 
 wf.connect([(mcflirtBetweenSess, betweenMat, [('mat_file', 'inlist')])])
@@ -736,7 +781,7 @@ wf.connect([(sessions, betweenMat, [('sess_nr', 'index')])])
 
 # Concatenate within-session mat_files with corresponding session's between-session realignment mat_file
 
-# In[47]:
+# In[52]:
 
 
 concat_xfm = True         # (a boolean) write joint transformation of two input matrices
@@ -745,21 +790,21 @@ concat_xfm = True         # (a boolean) write joint transformation of two input 
                           # requires: in_file2
 
 
-# In[48]:
+# In[53]:
 
 
 concatenateTransforms = MapNode(ConvertXFM(concat_xfm=concat_xfm),
                             name = 'concatenateTransforms', iterfield=['in_file2'])
 
 
-# In[49]:
+# In[54]:
 
 
 wf.connect([(betweenMat,concatenateTransforms,[('out','in_file')])])
 wf.connect([(mcflirtWithinSess,concatenateTransforms,[('mat_file','in_file2')])])
 
 
-# In[50]:
+# In[55]:
 
 
 #ConvertXFM.help()
@@ -769,7 +814,7 @@ wf.connect([(mcflirtWithinSess,concatenateTransforms,[('mat_file','in_file2')])]
 # 
 # (Not the most elegant solution, but ApplyXfm4D requires a directory of tranformation mat files as input)
 
-# In[51]:
+# In[56]:
 
 
 def copy_transforms(subject_id,sess_id,sess_nr,sess_nvol,mat_files,working_dir):
@@ -803,7 +848,7 @@ def copy_transforms(subject_id,sess_id,sess_nr,sess_nvol,mat_files,working_dir):
     return transformMatDir, prefix
 
 
-# In[52]:
+# In[57]:
 
 
 copyTransforms = Node(Function(input_names = ['subject_id','sess_id','sess_nr', 'sess_nvol',
@@ -814,7 +859,7 @@ copyTransforms = Node(Function(input_names = ['subject_id','sess_id','sess_nr', 
 copyTransforms.inputs.working_dir = opj(der_dir,wf_name)
 
 
-# In[53]:
+# In[58]:
 
 
 wf.connect([(subjects, copyTransforms, [('subject_id', 'subject_id')])])
@@ -826,13 +871,13 @@ wf.connect([(concatenateTransforms, copyTransforms, [('out_file', 'mat_files')])
 
 # Apply transformation matrices to realign within and between sessions in one step
 
-# In[54]:
+# In[59]:
 
 
 applyRealign = Node(ApplyXfm4D(),name='applyRealign')
 
 
-# In[55]:
+# In[60]:
 
 
 wf.connect([(discardDummies,applyRealign,[('roi_file','in_file')])])
@@ -841,7 +886,7 @@ wf.connect([(copyTransforms,applyRealign,[('transformMatDir','trans_dir')])])
 wf.connect([(copyTransforms,applyRealign,[('prefix','user_prefix')])])
 
 
-# In[56]:
+# In[61]:
 
 
 #ApplyXfm4D.help()
@@ -855,22 +900,37 @@ wf.connect([(copyTransforms,applyRealign,[('prefix','user_prefix')])])
 # 
 # https://nipype.readthedocs.io/en/0.12.0/interfaces/generated/nipype.interfaces.fsl.preprocess.html#fugue
 
-# In[57]:
+# In[62]:
+
+
+unwarp_direction = 'z-'
+
+
+# In[63]:
 
 
 if unwarp: 
-    unwarping = Node(FUGUE(),name='unwarping')
+    unwarping = Node(FUGUE(unwarp_direction=unwarp_direction),name='unwarping')
 
 # fugue -i epi --dwell=dwelltime --loadfmap=fieldmap -u result
 
 
-# In[58]:
+# In[64]:
 
 
 if unwarp:
     wf.connect([(applyRealign,unwarping,[('out_file','in_file')])])
     wf.connect([(acquisitionParams,unwarping,[('effective_echo_spacing','dwell_time')])])
-    wf.connect([(prepFieldMap,unwarping,[('out_fieldmap','fmap_in_file')])])
+    if precalc_fmap:
+        wf.connect([(datasourcePrecalcFmap,unwarping,[('precalc_fmap','fmap_in_file')])])
+    else:
+        wf.connect([(prepFieldMap,unwarping,[('out_fieldmap','fmap_in_file')])])
+
+
+# In[65]:
+
+
+FUGUE.help()
 
 
 # ### Slice-timing correction (SPM)
@@ -878,20 +938,20 @@ if unwarp:
 # Parker & Razlighi, 2019: "The Benefit of Slice Timing Correction in Common fMRI Preprocessing Pipelines."
 # https://www.frontiersin.org/articles/10.3389/fnins.2019.00821/full
 
-# In[59]:
+# In[66]:
 
 
 ref_slice = 1                           # (an integer (int or long))
                                         # 1-based Number of the reference slice
 
 
-# In[60]:
+# In[67]:
 
 
 sliceTimingCorr = Node(SliceTiming(ref_slice=ref_slice),name='sliceTimingCorr')
 
 
-# In[61]:
+# In[68]:
 
 
 if unwarp:
@@ -904,7 +964,7 @@ wf.connect([(acquisitionParams,sliceTimingCorr,[('TR','time_repetition')])])
 wf.connect([(acquisitionParams,sliceTimingCorr,[('TA','time_acquisition')])])
 
 
-# In[62]:
+# In[69]:
 
 
 #SliceTiming.help()
@@ -922,7 +982,7 @@ wf.connect([(acquisitionParams,sliceTimingCorr,[('TA','time_acquisition')])])
 
 # #### Concatenate functional runs
 
-# In[63]:
+# In[70]:
 
 
 dimension = 't'
@@ -930,16 +990,16 @@ output_type = 'NIFTI'
 merged_file = 'merged_func.nii'
 
 
-# In[64]:
+# In[71]:
 
 
-concatenateFunc = JoinNode(Merge(dimension=dimension, output_type=output_type, merged_file=merged_file),
+concatenateFunc = JoinNode(fslMerge(dimension=dimension, output_type=output_type, merged_file=merged_file),
                         joinfield='in_files',
                         joinsource='sessions',
                         name="concatenateFunc")
 
 
-# In[65]:
+# In[72]:
 
 
 wf.connect([(sliceTimingCorr, concatenateFunc,[('timecorrected_files', 'in_files')])])
@@ -947,27 +1007,27 @@ wf.connect([(sliceTimingCorr, concatenateFunc,[('timecorrected_files', 'in_files
 
 # #### Get mean functional volume
 
-# In[66]:
+# In[73]:
 
 
 mean_vol = True                 # (a boolean) register to mean volume
 save_mats = False               # (a boolean) save transformation parameters
 
 
-# In[67]:
+# In[74]:
 
 
 meanFunc = Node(MCFLIRT(mean_vol = mean_vol, save_mats=save_mats), 
                     name='meanFunc')
 
 
-# In[68]:
+# In[75]:
 
 
 wf.connect([(concatenateFunc, meanFunc,[('merged_file', 'in_file')])])
 
 
-# In[69]:
+# In[76]:
 
 
 MCFLIRT.help()
@@ -976,7 +1036,7 @@ MCFLIRT.help()
 # #### Make functional brain mask for coregistration
 # Note: this doesn't necessarily work well for all subjects. Therefore, this mask must be corrected manually. When the manual edits flag is true, the corrected binarized image is expected to be saved in the manual edits subject folder. Editing is done by loading the output of this node as a segmentation in ITKSNAP and then saving as a nifti file named brainMask.nii in the manual edits folder.
 
-# In[70]:
+# In[77]:
 
 
 thresh = 350
@@ -985,13 +1045,13 @@ dilate = 3 # voxels
 erode = 4
 
 
-# In[71]:
+# In[78]:
 
 
 binarizeMeanFunc = Node(Binarize(min=thresh, dilate=dilate, erode=erode),name='binarizeMeanFunc')
 
 
-# In[72]:
+# In[79]:
 
 
 wf.connect([(meanFunc,binarizeMeanFunc,[('mean_img','in_file')])])
@@ -999,7 +1059,7 @@ wf.connect([(meanFunc,binarizeMeanFunc,[('mean_img','in_file')])])
 
 # #### Coregister structural image to mean functional (FLIRT)
 
-# In[73]:
+# In[80]:
 
 
 out_matrix_file = 'struct2func.mat'     # (a pathlike object or string representing a file)
@@ -1011,7 +1071,7 @@ coarse_search = 4
 fine_search = 2
 
 
-# In[74]:
+# In[81]:
 
 
 if coregister and coreg_method == 'flirt':
@@ -1020,7 +1080,7 @@ if coregister and coreg_method == 'flirt':
     # out_matrix_file=out_matrix_file, coarse_search=coarse_search, fine_search=fine_search
 
 
-# In[75]:
+# In[82]:
 
 
 if coregister and coreg_method == 'flirt':
@@ -1033,7 +1093,7 @@ if coregister and coreg_method == 'flirt':
         coreg.inputs.apply_xfm = apply_xfm
 
 
-# In[76]:
+# In[83]:
 
 
 FLIRT.help()
@@ -1043,13 +1103,13 @@ FLIRT.help()
 # 
 # not done!
 
-# In[77]:
+# In[84]:
 
 
 # contrast_type = 't2'
 
 
-# In[78]:
+# In[85]:
 
 
 # if coreg_method == 'freesurfer':
@@ -1058,7 +1118,7 @@ FLIRT.help()
 #     coreg = Node(BBRegister(contrast_type=contrast_type),name='coreg')
 
 
-# In[79]:
+# In[86]:
 
 
 # if coreg_method == 'freesurfer':
@@ -1069,7 +1129,7 @@ FLIRT.help()
 #     wf.connect([(meanFunc, coreg,[('mean_img', 'source_file')])])
 
 
-# In[80]:
+# In[87]:
 
 
 # BBRegister.help()
@@ -1115,20 +1175,20 @@ FLIRT.help()
 # 
 # 
 
-# In[81]:
+# In[88]:
 
 
 #antsApplyTransforms --interpolation BSpline[5] -d 3 -i MP2RAGE.nii -r EPI.nii -t initial_matrix.txt -o registered_applied.nii
 
 
-# In[82]:
+# In[89]:
 
 
 interpolation = 'BSpline'
 dimension = 3
 
 
-# In[83]:
+# In[90]:
 
 
 if coregister and coreg_method == 'itk-snap':
@@ -1136,7 +1196,7 @@ if coregister and coreg_method == 'itk-snap':
                                 dimension=dimension), name='coreg')
 
 
-# In[84]:
+# In[91]:
 
 
 if coregister and coreg_method == 'itk-snap':
@@ -1180,7 +1240,7 @@ if coregister and coreg_method == 'itk-snap':
 # 
 # about masking: https://github.com/ANTsX/ANTs/issues/483
 
-# In[85]:
+# In[92]:
 
 
 verbose = True                          # (a boolean, nipype default value: False)
@@ -1306,10 +1366,10 @@ smoothing_sigmas = [[3.0,2.0,1.0,0.0], [3.0,2.0,1.0,0.0], [3.0,2.0,1.0,0.0]]
                                         # are a float)
 
 
-# In[86]:
+# In[93]:
 
 
-if coregister and coreg_method == 'antsRegistration':
+if coregister and not precalc_coreg and coreg_method == 'antsRegistration':
     coreg = Node(Registration(verbose=verbose,
                               dimension=dimension,
                               float=float,
@@ -1335,10 +1395,10 @@ if coregister and coreg_method == 'antsRegistration':
                  name='coreg')
 
 
-# In[87]:
+# In[94]:
 
 
-if coregister and coreg_method == 'antsRegistration':
+if coregister and not precalc_coreg and coreg_method == 'antsRegistration':
     if coreg_dir == 'func2struct':
         # when moving func 2 struct
         wf.connect([(datasource, coreg,[('UNI', 'fixed_image')])])    
@@ -1357,76 +1417,134 @@ if coregister and coreg_method == 'antsRegistration':
         
 
 
-# In[88]:
+# In[95]:
 
 
 Registration.help()
 
 
+# ### Combine composite transforms into list
+# coreg_regFUNC2UNI.hd5, coreg_regUNI2T1.hd5
+# 
+
+# In[96]:
+
+
+n_transforms = 2
+combineCoregTransforms = Node(utilMerge(n_transforms),name='combineCoregTransforms')
+
+
+# In[97]:
+
+
+if coregister and precalc_coreg and coreg_method == 'antsRegistration' and coreg_dir == 'func2struct':
+    wf.connect([(datasourceManualEdits, combineCoregTransforms,[('coreg_regFUNC2UNI', 'in1')])]) 
+    wf.connect([(datasourceManualEdits, combineCoregTransforms,[('coreg_regUNI2T1', 'in2')])]) 
+
+
+# In[98]:
+
+
+utilMerge.help()
+
+
 # #### Apply coregistration transforms to mean functional
 
-# In[89]:
+# In[99]:
 
 
 interpolation = 'BSpline'
 interpolation_parameters = (5,)
 
 
-# In[90]:
+# In[100]:
 
 
 applyCoreg2MeanFunc = Node(ApplyTransforms(interpolation=interpolation,
                                           interpolation_parameters=interpolation_parameters), name = 'applyCoreg2MeanFunc')
 
 
-# In[91]:
+# In[101]:
 
 
-if coregister and coreg_method == 'antsRegistration':
-    if coreg_dir == 'func2struct':
+if coregister and precalc_coreg and coreg_method == 'antsRegistration' and coreg_dir == 'func2struct':
+    if precalc_coreg:
         output_image = 'reg_meanFunc.nii'
         wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'input_image')])]) 
-        wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'reference_image')])]) 
-        wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])]) 
-        
-    elif coreg_dir == 'struct2func':
-        output_image = 'reg_UNI.nii'
-        wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'reference_image')])]) 
-        wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'input_image')])]) 
-        wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])]) 
-        
-        
-    applyCoreg2MeanFunc.inputs.output_image = output_image
+        wf.connect([(convertT1ToNii, applyCoreg2MeanFunc,[('out_file', 'reference_image')])]) 
+        wf.connect([(combineCoregTransforms, applyCoreg2MeanFunc,[('out', 'transforms')])])
+        applyCoreg2MeanFunc.inputs.output_image = output_image
+    else:
+        error()
+        #wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])])
 
 
-# #### Apply coregistration transforms to all runs
-
-# In[92]:
-
-
-applyCoreg = Node(ApplyTransforms(input_image_type=3,interpolation=interpolation,
-                                  interpolation_parameters=interpolation_parameters), name = 'applyCoreg')
-
-
-# In[93]:
-
-
-if coregister and coreg_method == 'antsRegistration':
-    if coreg_dir == 'func2struct':
-        wf.connect([(sliceTimingCorr,applyCoreg,[('timecorrected_files','input_image')])])
-        wf.connect([(datasource, applyCoreg,[('UNI', 'reference_image')])]) 
-        wf.connect([(coreg, applyCoreg,[('forward_transforms', 'transforms')])]) 
-
-
-# In[94]:
+# In[102]:
 
 
 ApplyTransforms.help()
 
 
+# In[103]:
+
+
+# if coregister and coreg_method == 'antsRegistration':
+#     if coreg_dir == 'func2struct':
+#         output_image = 'reg_meanFunc.nii'
+#         wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'input_image')])]) 
+#         wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'reference_image')])]) 
+#         wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])]) 
+        
+#     elif coreg_dir == 'struct2func':
+#         output_image = 'reg_UNI.nii'
+#         wf.connect([(meanFunc, applyCoreg2MeanFunc,[('mean_img', 'reference_image')])]) 
+#         wf.connect([(datasource, applyCoreg2MeanFunc,[('UNI', 'input_image')])]) 
+#         wf.connect([(coreg, applyCoreg2MeanFunc,[('forward_transforms', 'transforms')])]) 
+        
+        
+#     applyCoreg2MeanFunc.inputs.output_image = output_image
+
+
+# #### Apply coregistration transforms to all runs
+
+# In[104]:
+
+
+interpolation = 'BSpline'
+interpolation_parameters = (5,)
+input_image_type = 3
+
+
+# In[105]:
+
+
+applyCoreg = Node(ApplyTransforms(interpolation=interpolation,
+                                  interpolation_parameters=interpolation_parameters,
+                                  input_image_type=input_image_type), name = 'applyCoreg')
+
+
+# In[106]:
+
+
+if coregister and precalc_coreg and coreg_method == 'antsRegistration' and coreg_dir == 'func2struct':
+    if precalc_coreg:
+        output_image = 'reg_meanFunc.nii'
+        wf.connect([(sliceTimingCorr, applyCoreg,[('timecorrected_files', 'input_image')])])
+        wf.connect([(convertT1ToNii, applyCoreg,[('out_file', 'reference_image')])]) 
+        wf.connect([(combineCoregTransforms, applyCoreg,[('out', 'transforms')])])
+    else:
+        error()
+
+
+# In[107]:
+
+
+#ApplyTransforms.help()
+
+
 # ### Surface projection of functional runs
 
-# In[95]:
+# In[108]:
 
 
 hemi_list = ['lh','rh']
@@ -1440,7 +1558,7 @@ out_type = 'mgh'
 
 # #### Iterate over depths and hemispheres
 
-# In[96]:
+# In[109]:
 
 
 hemi_depth = Node(IdentityInterface(fields=['hemi','sampling_range']),name='hemi_depth')
@@ -1450,7 +1568,7 @@ hemi_depth.synchronize = False
 
 # #### Mean functional
 
-# In[97]:
+# In[110]:
 
 
 surfaceProjectMeanFunc = Node(SampleToSurface(reg_header=reg_header,
@@ -1460,20 +1578,20 @@ surfaceProjectMeanFunc = Node(SampleToSurface(reg_header=reg_header,
                                               interp_method=interp_method),name='surfaceProjectMeanFunc')
 
 
-# In[98]:
+# In[111]:
 
 
-if coregister and coreg_method == 'antsRegistration':
-    if coreg_dir == 'func2struct':
-        wf.connect([(applyCoreg2MeanFunc,surfaceProjectMeanFunc,[('output_image', 'source_file')])]) 
-        wf.connect([(subjects,surfaceProjectMeanFunc,[('subject_id', 'subject_id')])])
-        wf.connect([(hemi_depth,surfaceProjectMeanFunc,[('hemi', 'hemi')])])
-        wf.connect([(hemi_depth,surfaceProjectMeanFunc,[('sampling_range', 'sampling_range')])])
+# if coregister and coreg_method == 'antsRegistration':
+#     if coreg_dir == 'func2struct':
+#         wf.connect([(applyCoreg2MeanFunc,surfaceProjectMeanFunc,[('output_image', 'source_file')])]) 
+#         wf.connect([(subjects,surfaceProjectMeanFunc,[('subject_id', 'subject_id')])])
+#         wf.connect([(hemi_depth,surfaceProjectMeanFunc,[('hemi', 'hemi')])])
+#         wf.connect([(hemi_depth,surfaceProjectMeanFunc,[('sampling_range', 'sampling_range')])])
 
 
 # #### Other runs
 
-# In[99]:
+# In[112]:
 
 
 surfaceProject = Node(SampleToSurface(reg_header=reg_header,
@@ -1483,28 +1601,28 @@ surfaceProject = Node(SampleToSurface(reg_header=reg_header,
                                       interp_method=interp_method),name='surfaceProject')
 
 
-# In[100]:
+# In[113]:
 
 
-if coregister and coreg_method == 'antsRegistration':
-    if coreg_dir == 'func2struct':
-        wf.connect([(applyCoreg,surfaceProject,[('output_image', 'source_file')])]) 
-        wf.connect([(subjects,surfaceProject,[('subject_id', 'subject_id')])])
-        wf.connect([(hemi_depth,surfaceProject,[('hemi', 'hemi')])])
-        wf.connect([(hemi_depth,surfaceProject,[('sampling_range', 'sampling_range')])])
+# if coregister and coreg_method == 'antsRegistration':
+#     if coreg_dir == 'func2struct':
+#         wf.connect([(applyCoreg,surfaceProject,[('output_image', 'source_file')])]) 
+#         wf.connect([(subjects,surfaceProject,[('subject_id', 'subject_id')])])
+#         wf.connect([(hemi_depth,surfaceProject,[('hemi', 'hemi')])])
+#         wf.connect([(hemi_depth,surfaceProject,[('sampling_range', 'sampling_range')])])
 
 
 # #### Prepare occipital mask for pRF mapping
 
 # Surface project manual occipital mask
 
-# In[101]:
+# In[114]:
 
 
 interp_method = 'nearest'
 
 
-# In[102]:
+# In[115]:
 
 
 surfaceProjectOccipitalMask = Node(SampleToSurface(reg_header=reg_header,
@@ -1514,20 +1632,20 @@ surfaceProjectOccipitalMask = Node(SampleToSurface(reg_header=reg_header,
                                       interp_method=interp_method),name='surfaceProjectOccipitalMask')
 
 
-# In[103]:
+# In[116]:
 
 
-if coregister and coreg_method == 'antsRegistration':
-    if coreg_dir == 'func2struct':
-        wf.connect([(datasourceManualEdits,surfaceProjectOccipitalMask,[('manual_occipitalmask', 'source_file')])]) 
-        wf.connect([(subjects,surfaceProjectOccipitalMask,[('subject_id', 'subject_id')])])
-        wf.connect([(hemi_depth,surfaceProjectOccipitalMask,[('hemi', 'hemi')])])
-        wf.connect([(hemi_depth,surfaceProjectOccipitalMask,[('sampling_range', 'sampling_range')])])
+# if coregister and coreg_method == 'antsRegistration':
+#     if coreg_dir == 'func2struct':
+#         wf.connect([(datasourceManualEdits,surfaceProjectOccipitalMask,[('manual_occipitalmask', 'source_file')])]) 
+#         wf.connect([(subjects,surfaceProjectOccipitalMask,[('subject_id', 'subject_id')])])
+#         wf.connect([(hemi_depth,surfaceProjectOccipitalMask,[('hemi', 'hemi')])])
+#         wf.connect([(hemi_depth,surfaceProjectOccipitalMask,[('sampling_range', 'sampling_range')])])
 
 
 # Make lable out of surface projection
 
-# In[104]:
+# In[117]:
 
 
 def mri_vol2label_bash(subjects_dir,subject_id,working_dir,hemi,sampling_range,surface_file):
@@ -1542,7 +1660,7 @@ def mri_vol2label_bash(subjects_dir,subject_id,working_dir,hemi,sampling_range,s
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
     print(out_file)
     print(bash_command)
-    print('mri_vol2label --i $OUTDIR/$subject_id/lh_occ_depth0.0.mgh --id 1  --surf $subject_id lh  --l $OUTDIR/$subject_id/lh_occ_depth0.0.label')
+    print('mri_vol2label --i $OUTDIR/sub-01/lh_occ_depth0.0.mgh --id 1  --surf sub-01 lh  --l $OUTDIR/sub-01/lh_occ_depth0.0.label')
     print('%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
 
     os.system(bash_command)
@@ -1550,7 +1668,7 @@ def mri_vol2label_bash(subjects_dir,subject_id,working_dir,hemi,sampling_range,s
     return out_file
 
 
-# In[105]:
+# In[118]:
 
 
 makeOccLabel = Node(Function(input_names = ['subjects_dir','subject_id','working_dir','hemi',
@@ -1562,18 +1680,18 @@ makeOccLabel.inputs.working_dir = opj(der_dir,wf_name)
 makeOccLabel.inputs.subjects_dir = subjects_dir
 
 
-# In[106]:
+# In[119]:
 
 
-if coregister and coreg_method == 'antsRegistration':
-    if coreg_dir == 'func2struct':
-        wf.connect([(subjects,makeOccLabel,[('subject_id', 'subject_id')])])
-        wf.connect([(hemi_depth,makeOccLabel,[('hemi', 'hemi')])])
-        wf.connect([(hemi_depth,makeOccLabel,[('sampling_range', 'sampling_range')])])
-        wf.connect([(surfaceProjectOccipitalMask,makeOccLabel,[('out_file', 'surface_file')])])
+# if coregister and coreg_method == 'antsRegistration':
+#     if coreg_dir == 'func2struct':
+#         wf.connect([(subjects,makeOccLabel,[('subject_id', 'subject_id')])])
+#         wf.connect([(hemi_depth,makeOccLabel,[('hemi', 'hemi')])])
+#         wf.connect([(hemi_depth,makeOccLabel,[('sampling_range', 'sampling_range')])])
+#         wf.connect([(surfaceProjectOccipitalMask,makeOccLabel,[('out_file', 'surface_file')])])
 
 
-# In[107]:
+# In[120]:
 
 
 #operation = 'mul'   # ('add' or 'sub' or 'mul' or 'div' or 'rem' or 'max' or
@@ -1582,14 +1700,14 @@ if coregister and coreg_method == 'antsRegistration':
                     # flag: -%s, position: 4
 
 
-# In[108]:
+# In[121]:
 
 
 #if coregister:
 #    occipitalGM = Node(BinaryMaths(operation=operation), name='occipitalGM')
 
 
-# In[109]:
+# In[122]:
 
 
 #if coregister:
@@ -1601,14 +1719,14 @@ if coregister and coreg_method == 'antsRegistration':
 # 
 # A workflow working directory is like a cache. It contains not only the outputs of various processing stages, it also contains various extraneous information such as execution reports, hashfiles determining the input state of processes. All of this is embedded in a hierarchical structure that reflects the iterables that have been used in the workflow. This makes navigating the working directory a not so pleasant experience. And typically the user is interested in preserving only a small percentage of these outputs. The DataSink interface can be used to extract components from this cache and store it at a different location.
 
-# In[110]:
+# In[123]:
 
 
 dataSink = Node(DataSink(), name='dataSink')
 dataSink.inputs.base_directory = out_dir
 
 
-# In[111]:
+# In[124]:
 
 
 # T1.nii
@@ -1638,11 +1756,12 @@ wf.connect([(sliceTimingCorr,dataSink,[('timecorrected_files','func.sliceTimeCor
 # coregistered T1 and transformation matrices
 if coregister:
     if coreg_method == 'antsRegistration':
-        wf.connect([(coreg,dataSink,[('warped_image','func.coreg')])])
-        wf.connect([(coreg, dataSink,[('forward_transforms', 'func.coreg.@forwardTransform')])]) 
-        wf.connect([(coreg, dataSink,[('reverse_transforms', 'func.coreg.@reverseTransform')])])
+#         wf.connect([(coreg,dataSink,[('warped_image','func.coreg')])])
+#         wf.connect([(coreg, dataSink,[('forward_transforms', 'func.coreg.@forwardTransform')])]) 
+#         wf.connect([(coreg, dataSink,[('reverse_transforms', 'func.coreg.@reverseTransform')])])
 
-        wf.connect([(applyCoreg, dataSink,[('output_image', 'func.coreg.@reg_func')])])
+        wf.connect([(applyCoreg, dataSink,[('output_image', 'func.coreg')])])
+        wf.connect([(applyCoreg2MeanFunc, dataSink,[('output_image', 'func.coreg.@meanFunc')])])
         
     elif coreg_method == 'itk-snap':
         wf.connect([(coreg,dataSink,[('output_image','func.coreg')])])
@@ -1651,56 +1770,57 @@ if coregister:
 #if manual_edits:
 #    wf.connect([(occipitalGM,dataSink,[('out_file','func.occipitalGM')])])
     
-#if coreg_method == 'flirt':
+# if coreg_method == 'flirt':
 #    wf.connect([(coreg,dataSink,[('out_file','func.coreg')])])
 #    wf.connect([(coreg,dataSink,[('out_matrix_file','func.coreg.@out_matrix_file')])])
-#elif coreg_method == 'freesurfer':
+# elif coreg_method == 'freesurfer':
 #    wf.connect([(coreg,dataSink,[('out_file','func.coreg')])])
 #    wf.connect([(coreg,dataSink,[('out_matrix_file','func.coreg.@out_matrix_file')])])
-#elif coreg_method == 'antsRegistration':
+# elif coreg_method == 'antsRegistration':
 #    wf.connect([(coreg,dataSink,[('warped_image','func.coreg')])])
 
 
 # ### Put pRF analysis data in separate sink
 # 
 
-# In[112]:
+# In[125]:
 
 
 prfSink = Node(DataSink(), name='prfSink')
 prfSink.inputs.base_directory = pRF_dir
 
 
-# In[113]:
+# In[126]:
 
 
-if coregister and coreg_method == 'antsRegistration':
-    # coregistered mean functional
-    wf.connect([(applyCoreg2MeanFunc,prfSink,[('output_image','data.coreg_meanFunc')])])
+# if coregister and coreg_method == 'antsRegistration':
     
-    # coregistered other functional runs
-    wf.connect([(applyCoreg,prfSink,[('output_image','data.coreg')])])
+#     # coregistered other functional runs
+#     wf.connect([(applyCoreg,prfSink,[('output_image','data')])])
     
-    # surface projected mean functional
-    wf.connect([(surfaceProjectMeanFunc,prfSink,[('out_file','data.surfs_meanFunc')])])
+#     # coregistered mean functional
+#     wf.connect([(applyCoreg2MeanFunc,prfSink,[('output_image','data.@meanFunc')])])
+        
+# #     # surface projected mean functional
+# #     wf.connect([(surfaceProjectMeanFunc,prfSink,[('out_file','data.surfs_meanFunc')])])
     
-    # surface projected other functional runs
-    wf.connect([(surfaceProject,prfSink,[('out_file','data.surfs')])])
+# #     # surface projected other functional runs
+# #     wf.connect([(surfaceProject,prfSink,[('out_file','data.surfs')])])
     
-    # occipital labels
-    wf.connect([(makeOccLabel,prfSink,[('out_file','data.occLabels')])])
+# #     # occipital labels
+# #     wf.connect([(makeOccLabel,prfSink,[('out_file','data.occLabels')])])
 
 
 # ### Write graph for visualization and run pipeline
 
-# In[114]:
+# In[127]:
 
 
 if write_graph:
     wf.write_graph("workflowgraph.dot",graph2use='exec', format='svg', simple_form=True)
 
 
-# In[ ]:
+# In[128]:
 
 
 if run_pipeline:
@@ -1708,4 +1828,10 @@ if run_pipeline:
         wf.run()
     else:
         wf.run('MultiProc', plugin_args={'n_procs': n_procs})
+
+
+# In[ ]:
+
+
+
 

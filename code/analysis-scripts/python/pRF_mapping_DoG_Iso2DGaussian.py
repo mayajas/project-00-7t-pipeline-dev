@@ -16,6 +16,7 @@ from nilearn.maskers import NiftiMasker
 from nilearn import image
 import pickle
 import math 
+from scipy.io import savemat
 
 # get nr of processing threads (based on slurm script)
 n_procs = int(os.getenv('OMP_NUM_THREADS'))   
@@ -57,6 +58,7 @@ dog_grid_fit_file      = opj(prfpy_output_dir,hem_list[hem_id]+'_grid_fit_dog.pc
 iterative_fit_file     = opj(prfpy_output_dir,hem_list[hem_id]+'_iterative_fit.pckl')
 dog_iterative_fit_file = opj(prfpy_output_dir,hem_list[hem_id]+'_iterative_fit_dog.pckl')
 pRF_param_file         = opj(prfpy_output_dir,hem_list[hem_id]+'_pRF_params.pckl')
+bar_mat_file           = opj(prfpy_output_dir,hem_list[hem_id]+'_bar.mat')
 
 # set working dir
 if os.getcwd() != opj(home_dir,'code','analysis-scripts','python'):
@@ -116,6 +118,9 @@ masked_bar2 = masked_bar2_raw.T
 # Average bar runs
 bar_data = (masked_bar1 + masked_bar2)/2
 
+# Save mat file
+mymat={'bar_data':bar_data}
+savemat(bar_mat_file, mymat)
 
 ## Simple masker for 3D data (no time dim)
 # Apply simple masker to mean functional
